@@ -7,7 +7,7 @@ pub enum Message {
         user_id: String,
         progress: u16,
     },
-    Chanlenge {
+    Challenge {
         current_user_id: String,
         opponent_user_id: String,
     },
