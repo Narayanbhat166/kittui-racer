@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let app_clone = app.clone();
     tokio::spawn(async move {
-        websocket_handler::handler(app.clone(), receiver).await;
+        websocket_handler::event_handler(app.clone(), receiver).await;
     });
 
     let res = run_app(&mut terminal, app_clone, sender);

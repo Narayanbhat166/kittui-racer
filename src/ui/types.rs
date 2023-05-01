@@ -4,11 +4,12 @@ use tui::{
     style::{Color, Modifier, Style},
 };
 
-use crate::ui::models;
+use crate::models as server_models;
 
 pub struct Layouts {
     pub playground: Rect,
     pub progress_bar: Rect,
+    pub bottom_bar: Rect,
 }
 
 #[derive(Clone, Copy)]
@@ -39,12 +40,26 @@ impl CharState {
     }
 }
 
+#[derive(Default)]
+pub struct State {
+    pub prompt: Vec<PromptKey>,
+    pub position: u16,
+    pub players: Vec<server_models::User>,
+}
+
+#[derive(Default)]
+pub enum Tab {
+    Game,
+    #[default]
+    Arena,
+}
+
 /// App holds the state of the application
 pub struct App {
-    /// Current value of the input box
-    pub prompt: Vec<PromptKey>,
-    /// The current position of the cursor
-    pub position: u16,
+    pub current_tab: Tab,
+    pub state: State,
+    /// User id of the connection
+    pub user_id: usize,
     pub help_text: String,
 }
 
@@ -74,9 +89,10 @@ impl App {
         transformed_quote_str[0].state = CharState::CursorPosition;
 
         Self {
-            prompt: transformed_quote_str,
-            position: 0,
+            current_tab: Tab::default(),
             help_text: String::new(),
+            user_id: usize::default(),
+            state: State::default(),
         }
     }
 }
@@ -84,9 +100,10 @@ impl App {
 impl Default for App {
     fn default() -> App {
         App {
-            prompt: vec![],
-            position: 0,
+            current_tab: Tab::default(),
             help_text: String::new(),
+            user_id: usize::default(),
+            state: State::default(),
         }
     }
 }

@@ -97,7 +97,8 @@ async fn user_connected(ws: WebSocketStream<TcpStream>, users: UserConnections, 
         }
     });
 
-    let successful_connection_message = models::Message::SuccessfulConnection { user_id: my_id };
+    let successful_connection_message =
+        models::WebsocketMessage::SuccessfulConnection { user_id: my_id };
     let stringified_message = serde_json::to_string(&successful_connection_message).unwrap();
 
     // Tell the user about his connection and user id
@@ -121,7 +122,7 @@ async fn user_connected(ws: WebSocketStream<TcpStream>, users: UserConnections, 
 
     broadcast_message(
         my_id,
-        models::Message::UserStatus {
+        models::WebsocketMessage::UserStatus {
             connected_users: all_users,
         },
         &users,
@@ -141,7 +142,7 @@ async fn user_connected(ws: WebSocketStream<TcpStream>, users: UserConnections, 
                     Message::Text(text_message) => {
                         broadcast_message(
                             my_id,
-                            models::Message::ChatMessage {
+                            models::WebsocketMessage::ChatMessage {
                                 user_id: my_id.to_string(),
                                 message: text_message,
                             },
@@ -175,7 +176,7 @@ async fn user_connected(ws: WebSocketStream<TcpStream>, users: UserConnections, 
 
     broadcast_message(
         my_id,
-        models::Message::UserStatus {
+        models::WebsocketMessage::UserStatus {
             connected_users: all_users,
         },
         &users,
@@ -188,7 +189,7 @@ async fn user_connected(ws: WebSocketStream<TcpStream>, users: UserConnections, 
 /// This function will send the message to all users except the one who sent it
 async fn broadcast_message(
     my_id: usize,
-    msg: models::Message,
+    msg: models::WebsocketMessage,
     users: &UserConnections,
     _users_db: &UsersDb,
     send_to_self: bool,

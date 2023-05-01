@@ -1,15 +1,20 @@
-use super::models;
+use std::sync::{Arc, Mutex};
+
+use crate::ui::types::App;
+
+use super::types;
 use tui::layout::{Constraint, Direction, Layout, Rect};
 
 // This would have to provide different layouts for the current active window
-pub fn divide_frame(main_frame_size: Rect) -> models::Layouts {
+pub fn divide_frame(main_frame_size: Rect, app: Arc<Mutex<App>>) -> types::Layouts {
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(
             [
-                Constraint::Percentage(20),
+                Constraint::Percentage(20), // Used here as a top margin
                 Constraint::Min(1),
-                Constraint::Percentage(15),
+                Constraint::Percentage(20),
+                Constraint::Length(1),
             ]
             .as_ref(),
         )
@@ -29,8 +34,9 @@ pub fn divide_frame(main_frame_size: Rect) -> models::Layouts {
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(main_chunks[2]);
 
-    models::Layouts {
+    types::Layouts {
         playground: middle_chunks[1],
         progress_bar: progress_bars[0],
+        bottom_bar: middle_chunks[3],
     }
 }

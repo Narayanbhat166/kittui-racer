@@ -1,7 +1,7 @@
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(tag = "message_type", content = "message")]
 #[serde(rename_all = "snake_case")]
-pub enum Message {
+pub enum WebsocketMessage {
     // Progress of the user ( user_id, progress )
     Progress {
         user_id: String,

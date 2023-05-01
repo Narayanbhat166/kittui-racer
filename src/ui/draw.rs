@@ -8,7 +8,7 @@ use tui::{
     Frame,
 };
 
-use crate::ui::models::{App, Layouts};
+use crate::ui::types::{App, Layouts};
 
 pub fn draw_ui_from_layout<B: Backend>(
     app: Arc<Mutex<App>>,
