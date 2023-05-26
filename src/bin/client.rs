@@ -7,7 +7,8 @@ use crossterm::{
 
 use kittui_racer::ui::{
     draw::draw_ui_from_layout,
-    models::{App, UiMessage},
+    input_handler,
+    types::{App, UiMessage},
     websocket_handler,
 };
 
@@ -87,6 +88,7 @@ fn run_app<B: Backend>(
                     return Ok(());
                 } else {
                     // Let the handler handle it
+                    // input_handler::handle_input(app.clone(), key_event.code);
                     sender.send(UiMessage::Input(key_event.code)).unwrap();
                 }
             }

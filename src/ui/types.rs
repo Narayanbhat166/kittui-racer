@@ -1,10 +1,15 @@
+use std::sync::{Arc, Mutex};
+
 use crossterm::event::KeyCode;
 use tui::{
     layout::Rect,
     style::{Color, Modifier, Style},
 };
 
-use crate::models as server_models;
+use crate::{
+    models::{self as server_models, User},
+    ui::stateful_list::StatefulList,
+};
 
 pub struct Layouts {
     pub playground: Rect,
@@ -40,27 +45,56 @@ impl CharState {
     }
 }
 
-#[derive(Default)]
 pub struct State {
     pub prompt: Vec<PromptKey>,
-    pub position: u16,
-    pub players: Vec<server_models::User>,
+    // Position of the cursor
+    pub cursor_position: u16,
+    pub players: StatefulList<String>,
+    pub menu: StatefulList<&'static str>,
 }
 
-#[derive(Default)]
+impl State {
+    pub fn new() -> Self {
+        Self {
+            prompt: vec![],
+            cursor_position: 0,
+            players: StatefulList::with_items(vec![]),
+            menu: StatefulList::with_items(vec!["Game", "Practice"]),
+        }
+    }
+}
+
+#[derive(Default, Clone, Copy)]
 pub enum Tab {
+    // This is where the player can play
     Game,
-    #[default]
+    // This Tab is where the user can challenge other players
     Arena,
+    // This is where the user can choose whether to practice typing or challenge other players
+    // This is the default Tab when user initializes the app
+    #[default]
+    Menu,
+}
+
+impl Tab {
+    pub fn handle_tab_specific_input(self, app: &mut App, input: KeyCode) -> bool {
+        match app.current_tab {
+            Tab::Game => super::input_handler::handle_game_input(app, input),
+            Tab::Arena => super::input_handler::handle_arena_input(app, input),
+            Tab::Menu => super::input_handler::handle_menu_input(app, input),
+        }
+    }
 }
 
 /// App holds the state of the application
 pub struct App {
+    // The currently active tab. Layout will be same for all the Tabs. Data displayed will be different
     pub current_tab: Tab,
+    // The state of application
     pub state: State,
-    /// User id of the connection
+    // User id of the connection
     pub user_id: usize,
-    pub help_text: String,
+    pub logs: String,
 }
 
 pub struct PromptKey {
@@ -90,20 +124,9 @@ impl App {
 
         Self {
             current_tab: Tab::default(),
-            help_text: String::new(),
+            logs: String::new(),
             user_id: usize::default(),
-            state: State::default(),
-        }
-    }
-}
-
-impl Default for App {
-    fn default() -> App {
-        App {
-            current_tab: Tab::default(),
-            help_text: String::new(),
-            user_id: usize::default(),
-            state: State::default(),
+            state: State::new(),
         }
     }
 }

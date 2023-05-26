@@ -1,0 +1,3 @@
+pub enum NetworkError {
+    ConnectFailed,
+}

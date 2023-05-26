@@ -1,6 +1,5 @@
 use std::sync::{Arc, Mutex};
 
-use async_trait::async_trait;
 use crossterm::event::KeyCode;
 
 use crate::ui::types as ui_models;
@@ -34,6 +33,7 @@ pub enum TransitionAction {
     Unselect,
     Nop,
     Init,
+    Quit,
 }
 
 impl Window {
@@ -57,6 +57,4 @@ impl Window {
     ) -> Option<Window> {
         None
     }
-
-    fn get_layout(&self, app: Arc<Mutex<ui_models::App>>) {}
 }

@@ -5,16 +5,15 @@ use crate::ui::types::App;
 use super::types;
 use tui::layout::{Constraint, Direction, Layout, Rect};
 
-// This would have to provide different layouts for the current active window
-pub fn divide_frame(main_frame_size: Rect, app: Arc<Mutex<App>>) -> types::Layouts {
+pub fn divide_frame(main_frame_size: Rect) -> types::Layouts {
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(
             [
                 Constraint::Percentage(20), // Used here as a top margin
                 Constraint::Min(1),
-                Constraint::Percentage(20),
-                Constraint::Length(1),
+                Constraint::Length(6),
+                Constraint::Length(3),
             ]
             .as_ref(),
         )
@@ -37,6 +36,6 @@ pub fn divide_frame(main_frame_size: Rect, app: Arc<Mutex<App>>) -> types::Layou
     types::Layouts {
         playground: middle_chunks[1],
         progress_bar: progress_bars[0],
-        bottom_bar: middle_chunks[3],
+        bottom_bar: main_chunks[3],
     }
 }
