@@ -2,14 +2,12 @@ use std::sync::{Arc, Mutex};
 
 use tui::{
     backend::Backend,
-    layout::{Layout, Rect},
+    layout::Rect,
     style::{Color, Modifier, Style},
     text::{Span, Spans, Text},
-    widgets::{Block, Borders, Gauge, List, ListItem, Paragraph, Widget, Wrap},
+    widgets::{Block, Borders, Gauge, List, ListItem, Paragraph, Wrap},
     Frame,
 };
-
-use super::stateful_list;
 
 use crate::ui::types::{App, Layouts, Tab};
 
@@ -48,7 +46,7 @@ fn draw_playground<B: Backend>(app: Arc<Mutex<App>>, playground_area: Rect, fram
                 .players
                 .items
                 .iter()
-                .map(|player_id| ListItem::new(player_id.to_owned()))
+                .map(|player| ListItem::new(player.id.to_string()))
                 .collect::<Vec<_>>();
 
             let list = List::new(items)
@@ -84,7 +82,14 @@ fn draw_playground<B: Backend>(app: Arc<Mutex<App>>, playground_area: Rect, fram
 fn draw_bottom_bar<B: Backend>(app: Arc<Mutex<App>>, area: Rect, frame: &mut Frame<B>) {
     let app = app.lock().unwrap();
 
-    let paragraph_widget = Paragraph::new(Text::from(app.logs.clone()))
+    let log_color = match app.logs.log_type {
+        super::types::LogType::Success => Color::Green,
+        super::types::LogType::Error => Color::Red,
+        super::types::LogType::Info => Color::Gray,
+    };
+
+    let paragraph_widget = Paragraph::new(Text::from(app.logs.message.to_string()))
+        .style(Style::default().fg(log_color))
         .block(Block::default().borders(Borders::ALL).title("Logs"));
 
     frame.render_widget(paragraph_widget, area)

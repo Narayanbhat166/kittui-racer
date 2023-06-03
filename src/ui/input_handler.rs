@@ -56,7 +56,36 @@ pub fn handle_game_input(app: &mut types::App, input: KeyCode) -> bool {
 /// Handle challenging of players, and switching selection using arrow keys
 /// Returns a bool which indicates whether to quit the app or not
 pub fn handle_arena_input(app: &mut types::App, input: KeyCode) -> bool {
-    todo!()
+    let action = match input {
+        KeyCode::Down | KeyCode::Char('j') => TransitionAction::MoveDown,
+        KeyCode::Up | KeyCode::Char('k') => TransitionAction::MoveUp,
+        KeyCode::Right | KeyCode::Enter | KeyCode::Char('l') => TransitionAction::Select,
+        KeyCode::Esc => TransitionAction::Quit,
+        _ => TransitionAction::Nop,
+    };
+
+    match action {
+        TransitionAction::MoveDown => {
+            app.state.players.next();
+            false
+        }
+        TransitionAction::MoveUp => {
+            app.state.players.previous();
+            false
+        }
+        TransitionAction::Select => {
+            // Challenge the player
+            // Steps to be taken
+            // Send Challenge(player_id), message to be handled by the websocket
+            app.state
+                .players
+                .get_selected_item()
+                .map(|selected_player| selected_player.challenge(app.event_sender.clone()));
+            false
+        }
+        TransitionAction::Quit => true,
+        _ => false,
+    }
 }
 
 /// Handle switching between menu options
@@ -66,7 +95,6 @@ pub fn handle_menu_input(app: &mut types::App, input: KeyCode) -> bool {
         KeyCode::Down | KeyCode::Char('j') => TransitionAction::MoveDown,
         KeyCode::Up | KeyCode::Char('k') => TransitionAction::MoveUp,
         KeyCode::Right | KeyCode::Enter | KeyCode::Char('l') => TransitionAction::Select,
-        KeyCode::Left | KeyCode::Char('h') => TransitionAction::Unselect,
         KeyCode::Esc => TransitionAction::Quit,
         _ => TransitionAction::Nop,
     };
@@ -76,12 +104,25 @@ pub fn handle_menu_input(app: &mut types::App, input: KeyCode) -> bool {
             app.state.menu.next();
             false
         }
-        TransitionAction::MoveUp => todo!(),
-        TransitionAction::Select => todo!(),
-        TransitionAction::Unselect => todo!(),
-        TransitionAction::Nop => todo!(),
-        TransitionAction::Init => todo!(),
+        TransitionAction::MoveUp => {
+            app.state.menu.previous();
+            false
+        }
+        TransitionAction::Select => app
+            .state
+            .menu
+            .state
+            .selected()
+            .and_then(|index| {
+                match index {
+                    0 => app.current_tab = types::Tab::Arena,
+                    _ => app.current_tab = types::Tab::Game,
+                }
+                Some(false)
+            })
+            .unwrap_or(false),
         TransitionAction::Quit => true,
+        _ => false,
     }
 }
 

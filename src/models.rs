@@ -33,6 +33,7 @@ pub enum UserStatus {
 pub struct User {
     pub id: usize,
     pub status: UserStatus,
+    pub display_name: Option<String>,
 }
 
 pub enum GameStatus {

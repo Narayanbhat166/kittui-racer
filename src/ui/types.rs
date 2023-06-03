@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc::Sender, Arc, Mutex};
 
 use crossterm::event::KeyCode;
 use tui::{
@@ -6,10 +6,7 @@ use tui::{
     style::{Color, Modifier, Style},
 };
 
-use crate::{
-    models::{self as server_models, User},
-    ui::stateful_list::StatefulList,
-};
+use crate::ui::stateful_list::StatefulList;
 
 pub struct Layouts {
     pub playground: Rect,
@@ -45,11 +42,24 @@ impl CharState {
     }
 }
 
+#[derive(Clone)]
+pub struct Player {
+    pub display_name: String,
+    pub id: usize,
+}
+
+impl Player {
+    // Send a challenge message for the player
+    pub fn challenge(&self, sender: Sender<UiMessage>) {
+        let message = UiMessage::Challenge(self.id);
+        sender.send(message);
+    }
+}
 pub struct State {
     pub prompt: Vec<PromptKey>,
     // Position of the cursor
     pub cursor_position: u16,
-    pub players: StatefulList<String>,
+    pub players: StatefulList<Player>,
     pub menu: StatefulList<&'static str>,
 }
 
@@ -86,6 +96,29 @@ impl Tab {
     }
 }
 
+#[derive(Default)]
+pub enum LogType {
+    Success,
+    Error,
+    #[default]
+    Info,
+}
+
+#[derive(Default)]
+pub struct Logs {
+    pub log_type: LogType,
+    pub message: String,
+}
+
+impl Logs {
+    pub fn new(log_type: LogType, message: &str) -> Self {
+        Self {
+            log_type,
+            message: message.to_string(),
+        }
+    }
+}
+
 /// App holds the state of the application
 pub struct App {
     // The currently active tab. Layout will be same for all the Tabs. Data displayed will be different
@@ -94,7 +127,8 @@ pub struct App {
     pub state: State,
     // User id of the connection
     pub user_id: usize,
-    pub logs: String,
+    pub logs: Logs,
+    pub event_sender: Sender<UiMessage>,
 }
 
 pub struct PromptKey {
@@ -112,8 +146,8 @@ impl PromptKey {
 }
 
 impl App {
-    pub fn new(quote: String) -> Self {
-        let mut transformed_quote_str = quote
+    pub fn new(event_sender: Sender<UiMessage>) -> Self {
+        let mut transformed_quote_str = String::from("Things we do for love")
             .chars()
             .into_iter()
             .map(PromptKey::new)
@@ -124,14 +158,15 @@ impl App {
 
         Self {
             current_tab: Tab::default(),
-            logs: String::new(),
+            logs: Logs::default(),
             user_id: usize::default(),
             state: State::new(),
+            event_sender,
         }
     }
 }
 
 pub enum UiMessage {
-    Hello,
-    Input(KeyCode),
+    ProgressUpdate(usize),
+    Challenge(usize),
 }

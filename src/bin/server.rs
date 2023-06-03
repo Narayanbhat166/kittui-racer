@@ -5,37 +5,33 @@ use std::sync::{
     Arc,
 };
 
-use futures_util::{sink::Close, SinkExt, StreamExt, TryFutureExt};
+use futures_util::{SinkExt, StreamExt, TryFutureExt};
 use tokio::sync::{
     mpsc::{self, UnboundedSender},
     RwLock,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tui::text;
-// use warp::ws::{Message, WebSocket};
-use warp::Filter;
 
 use kittui_racer::models;
 
 /// Our global unique user id counter.
 static NEXT_USER_ID: AtomicUsize = AtomicUsize::new(1);
 
-use std::{env, io::Error as IoError, net::SocketAddr, sync::Mutex};
-
-use futures_util::{future, pin_mut, stream::TryStreamExt};
+use std::env;
 
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{tungstenite::protocol::Message, WebSocketStream};
 
-type Tx = UnboundedSender<Message>;
-type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
-
 /// Our state of currently connected users.
 ///
 /// - Key is their id
-/// - Value is a sender of `warp::ws::Message`
-type UserConnections = Arc<RwLock<HashMap<usize, mpsc::UnboundedSender<Message>>>>;
-type UsersDb = Arc<RwLock<HashMap<usize, models::User>>>;
+struct UserConnection {
+    sender: mpsc::UnboundedSender<Message>,
+    data: models::User,
+}
+
+type UserConnections = Arc<RwLock<HashMap<usize, UserConnection>>>;
+// type UsersDb = Arc<RwLock<HashMap<usize, models::User>>>;
 
 #[tokio::main]
 async fn main() {
@@ -44,7 +40,6 @@ async fn main() {
     // Keep track of all connected users, key is usize, value
     // is a websocket sender.
     let users = UserConnections::default();
-    let users_db = UsersDb::default();
     // Turn our "state" into a new Filter...
     let addr = env::args()
         .nth(1)
@@ -58,21 +53,20 @@ async fn main() {
     // Let's spawn the handling of each connection in a separate task.
     while let Ok((stream, addr)) = listener.accept().await {
         let cloned_users = users.clone();
-        let cloned_users_db = users_db.clone();
         tokio::spawn(async move {
             let ws_stream = tokio_tungstenite::accept_async(stream)
                 .await
                 .expect("Error during the websocket handshake occurred");
             println!("WebSocket connection established: {}", addr);
 
-            user_connected(ws_stream, cloned_users, cloned_users_db).await;
+            user_connected(ws_stream, cloned_users).await;
         });
     }
 }
 
 // fn broadcast_user_status(my_id: usize, users_db: &UsersDb, )
 
-async fn user_connected(ws: WebSocketStream<TcpStream>, users: UserConnections, users_db: UsersDb) {
+async fn user_connected(ws: WebSocketStream<TcpStream>, users: UserConnections) {
     // Use a counter to assign a new unique ID for this user.
     let my_id = NEXT_USER_ID.fetch_add(1, Ordering::Relaxed);
 
@@ -110,14 +104,19 @@ async fn user_connected(ws: WebSocketStream<TcpStream>, users: UserConnections, 
         status: models::UserStatus::Available,
     };
 
-    users.write().await.insert(my_id, tx.clone());
-    users_db.write().await.insert(my_id, new_user);
+    let user_connection_details = UserConnection {
+        sender: tx.clone(),
+        data: new_user,
+    };
 
-    let all_users = users_db
+    users.write().await.insert(my_id, user_connection_details);
+    // users_db.write().await.insert(my_id, new_user);
+
+    let all_users = users
         .read()
         .await
         .iter()
-        .map(|(_user_id, user_data)| user_data.clone())
+        .map(|(_user_id, user_data)| user_data.data.clone())
         .collect::<Vec<_>>();
 
     broadcast_message(
@@ -126,7 +125,6 @@ async fn user_connected(ws: WebSocketStream<TcpStream>, users: UserConnections, 
             connected_users: all_users,
         },
         &users,
-        &users_db,
         true,
     )
     .await;
@@ -147,7 +145,6 @@ async fn user_connected(ws: WebSocketStream<TcpStream>, users: UserConnections, 
                                 message: text_message,
                             },
                             &users,
-                            &users_db,
                             false,
                         )
                         .await;
@@ -165,13 +162,13 @@ async fn user_connected(ws: WebSocketStream<TcpStream>, users: UserConnections, 
 
     // user_ws_rx stream will keep processing as long as the user stays
     // connected. Once they disconnect, then...
-    user_disconnected(my_id, &users, &users_db).await;
+    user_disconnected(my_id, &users).await;
 
-    let all_users = users_db
+    let all_users = users
         .read()
         .await
         .iter()
-        .map(|(_user_id, user_data)| user_data.clone())
+        .map(|(_user_id, user_data)| user_data.data.clone())
         .collect::<Vec<_>>();
 
     broadcast_message(
@@ -180,7 +177,6 @@ async fn user_connected(ws: WebSocketStream<TcpStream>, users: UserConnections, 
             connected_users: all_users,
         },
         &users,
-        &users_db,
         true,
     )
     .await;
@@ -191,19 +187,19 @@ async fn broadcast_message(
     my_id: usize,
     msg: models::WebsocketMessage,
     users: &UserConnections,
-    _users_db: &UsersDb,
     send_to_self: bool,
 ) {
     let stringified_message = serde_json::to_string(&msg).unwrap();
     // New message from this user, send it to everyone else (except same uid)...
     for (&uid, tx) in users.read().await.iter() {
         if send_to_self || my_id != uid {
-            send_message(stringified_message.clone(), tx).await
+            send_message(stringified_message.clone(), &tx.sender).await
         }
     }
 }
 
 async fn send_message(message: String, tx: &UnboundedSender<Message>) {
+    println!("{message}");
     if let Err(_disconnected) = tx.send(Message::text(message)) {
         // The tx is disconnected, our `user_disconnected` code
         // should be happening in another task, nothing more to
@@ -211,19 +207,14 @@ async fn send_message(message: String, tx: &UnboundedSender<Message>) {
     }
 }
 
-// async fn user_message(my_id: usize, msg: models::Message, users: &UserConnections) {
-//     // Skip any non-Text messages...
-// }
-
-async fn user_disconnected(my_id: usize, users: &UserConnections, users_db: &UsersDb) {
+async fn user_disconnected(my_id: usize, users: &UserConnections) {
     eprintln!("good bye user: {}", my_id);
 
     // Stream closed up, so remove from the user list
     users.write().await.remove(&my_id);
-    users_db.write().await.remove(&my_id);
 }
 
-static INDEX_HTML: &str = r#"<!DOCTYPE html>
+static _INDEX_HTML: &str = r#"<!DOCTYPE html>
 <html lang="en">
     <head>
         <title>Warp Chat</title>

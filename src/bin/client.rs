@@ -36,12 +36,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Do an api call and get the quote
-    let quote = "How is it possible that a being with such sensitive jewels as the eyes, such enchanted musical instruments as the ears, and such fabulous arabesque of nerves as the brain can experience itself anything less than a god.".to_string();
-
     // create app and run it
-    let app = Arc::new(Mutex::new(App::new(quote)));
     let (sender, receiver) = mpsc::channel::<UiMessage>();
+    let app = Arc::new(Mutex::new(App::new(sender.clone())));
 
     let app_clone = app.clone();
     tokio::spawn(async move {
@@ -88,8 +85,7 @@ fn run_app<B: Backend>(
                     return Ok(());
                 } else {
                     // Let the handler handle it
-                    // input_handler::handle_input(app.clone(), key_event.code);
-                    sender.send(UiMessage::Input(key_event.code)).unwrap();
+                    input_handler::handle_input(app.clone(), key_event.code);
                 }
             }
         }

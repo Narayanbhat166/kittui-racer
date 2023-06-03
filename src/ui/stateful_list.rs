@@ -12,6 +12,12 @@ impl<T> StatefulList<T> {
         StatefulList { state, items }
     }
 
+    pub fn get_selected_item(&self) -> Option<&T> {
+        self.state
+            .selected()
+            .and_then(|selected_index| self.items.get(selected_index))
+    }
+
     pub fn new() -> Self {
         Self {
             state: ListState::default(),
