@@ -12,6 +12,15 @@ impl<T> StatefulList<T> {
         StatefulList { state, items }
     }
 
+    pub fn add_items(&mut self, items: Vec<T>) {
+        self.items.extend(items)
+    }
+
+    pub fn clear_and_insert_items(&mut self, items: Vec<T>) {
+        self.items.clear();
+        self.items.extend(items);
+    }
+
     pub fn get_selected_item(&self) -> Option<&T> {
         self.state
             .selected()

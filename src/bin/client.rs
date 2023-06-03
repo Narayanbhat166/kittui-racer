@@ -1,6 +1,6 @@
 use crossterm::{
     self,
-    event::{DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    event::{DisableMouseCapture, EnableMouseCapture, KeyCode},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -16,7 +16,7 @@ use std::{
     error::Error,
     io,
     sync::{
-        mpsc::{self, Sender},
+        mpsc::{self},
         Arc, Mutex,
     },
     time::Duration,
@@ -38,14 +38,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // create app and run it
     let (sender, receiver) = mpsc::channel::<UiMessage>();
-    let app = Arc::new(Mutex::new(App::new(sender.clone())));
+    let app = Arc::new(Mutex::new(App::new(sender)));
 
     let app_clone = app.clone();
     tokio::spawn(async move {
         websocket_handler::event_handler(app.clone(), receiver).await;
     });
 
-    let res = run_app(&mut terminal, app_clone, sender);
+    let res = run_app(&mut terminal, app_clone);
 
     // restore terminal
     disable_raw_mode()?;
@@ -63,11 +63,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn run_app<B: Backend>(
-    terminal: &mut Terminal<B>,
-    app: Arc<Mutex<App>>,
-    sender: Sender<UiMessage>,
-) -> io::Result<()> {
+fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: Arc<Mutex<App>>) -> io::Result<()> {
     let tick_rate = Duration::from_millis(100);
 
     let mut last_tick = std::time::Instant::now();

@@ -10,9 +10,10 @@ use tokio::sync::{
     mpsc::{self, UnboundedSender},
     RwLock,
 };
+
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
-use kittui_racer::models;
+use kittui_racer::{models, server_utils};
 
 /// Our global unique user id counter.
 static NEXT_USER_ID: AtomicUsize = AtomicUsize::new(1);
@@ -91,18 +92,21 @@ async fn user_connected(ws: WebSocketStream<TcpStream>, users: UserConnections) 
         }
     });
 
-    let successful_connection_message =
-        models::WebsocketMessage::SuccessfulConnection { user_id: my_id };
-    let stringified_message = serde_json::to_string(&successful_connection_message).unwrap();
-
-    // Tell the user about his connection and user id
-    send_message(stringified_message, &tx).await;
-
     // Save the sender in our list of connected users.
     let new_user = models::User {
         id: my_id,
         status: models::UserStatus::Available,
+        display_name: server_utils::generate_name(),
     };
+
+    let successful_connection_message = models::WebsocketMessage::SuccessfulConnection {
+        user: new_user.clone(),
+    };
+
+    let stringified_message = serde_json::to_string(&successful_connection_message).unwrap();
+
+    // Tell the user about his connection and user id
+    send_message(stringified_message, &tx).await;
 
     let user_connection_details = UserConnection {
         sender: tx.clone(),

@@ -1,7 +1,3 @@
-use std::sync::{Arc, Mutex};
-
-use crate::ui::types::App;
-
 use super::types;
 use tui::layout::{Constraint, Direction, Layout, Rect};
 

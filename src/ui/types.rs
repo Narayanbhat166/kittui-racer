@@ -1,4 +1,4 @@
-use std::sync::{mpsc::Sender, Arc, Mutex};
+use std::sync::mpsc::Sender;
 
 use crossterm::event::KeyCode;
 use tui::{
@@ -6,7 +6,7 @@ use tui::{
     style::{Color, Modifier, Style},
 };
 
-use crate::ui::stateful_list::StatefulList;
+use crate::{models, ui::stateful_list::StatefulList};
 
 pub struct Layouts {
     pub playground: Rect,
@@ -42,17 +42,14 @@ impl CharState {
     }
 }
 
-#[derive(Clone)]
-pub struct Player {
-    pub display_name: String,
-    pub id: usize,
-}
+// For the client, each user is a player
+type Player = models::User;
 
 impl Player {
     // Send a challenge message for the player
     pub fn challenge(&self, sender: Sender<UiMessage>) {
         let message = UiMessage::Challenge(self.id);
-        sender.send(message);
+        sender.send(message).unwrap();
     }
 }
 pub struct State {

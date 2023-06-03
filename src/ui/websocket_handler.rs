@@ -1,11 +1,8 @@
-use futures_util::{join, SinkExt, StreamExt};
+use futures_util::{join, StreamExt};
 use std::sync::{mpsc::Receiver, Arc, Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
-use crate::{
-    models as server_models,
-    ui::{input_handler::handle_arena_input, types},
-};
+use crate::{models as server_models, ui::types};
 const WS_URL: &'static str = "ws://localhost:8080";
 
 fn handle_incoming_websocket_message(
@@ -15,24 +12,45 @@ fn handle_incoming_websocket_message(
     let mut unlocked_app = app.lock().unwrap();
 
     match websock_message {
-        server_models::WebsocketMessage::Progress { user_id, progress } => todo!(),
-        server_models::WebsocketMessage::Challenge {
-            current_user_id,
-            opponent_user_id,
-        } => todo!(),
-        server_models::WebsocketMessage::UserStatus { connected_users } => {
-            let players = connected_users.iter().map(|user| )
+        server_models::WebsocketMessage::Progress {
+            user_id: _,
+            progress: _,
+        } => {
+            //TODO:
         }
-        server_models::WebsocketMessage::SuccessfulConnection { user_id } => {
+        server_models::WebsocketMessage::Challenge {
+            // Handle a challenge message from a challenger
+            // For the receiver, the meanings of those words are interchanged
+            // Because the challenger will challenge with his user id in `challenger_user_id`
+            // This is sent by the Master Cat ( server ), to the right challenger
+            // If the receiver ( current user ), received this message, then it implies that
+            // The other person challenged current user
+            challanger_user_id: _opponent_user_id,
+            challenge_user_id: _current_user_id,
+        } => {
+            // Show a prompt for the user to accept / reject the challenge
+            // This should last only for few minutes, based on the expiry time
+        }
+        server_models::WebsocketMessage::UserStatus { connected_users } => unlocked_app
+            .state
+            .players
+            .clear_and_insert_items(connected_users),
+        server_models::WebsocketMessage::SuccessfulConnection { user } => {
             // This is the user id of the client, store it in app state
-            unlocked_app.user_id = user_id;
+            // This is helpful in order to hide the current user in the players list
+            unlocked_app.user_id = user.id;
             let log_message = types::Logs::new(
                 types::LogType::Info,
-                &format!("Assigned user id {}", user_id.to_string()),
+                &format!("Master Cat assigned name {} to you", user.display_name),
             );
             unlocked_app.logs = log_message;
         }
-        server_models::WebsocketMessage::ChatMessage { user_id, message } => todo!(),
+        server_models::WebsocketMessage::ChatMessage {
+            user_id: _,
+            message: _,
+        } => {
+            //TODO
+        }
     }
 }
 
@@ -45,14 +63,14 @@ pub async fn event_handler(app: Arc<Mutex<types::App>>, receiver: Receiver<types
     // This error should be caught and logged
     let connect_socket_result = connect_async(url).await;
     match connect_socket_result {
-        Ok((socket, response)) => {
+        Ok((socket, _response)) => {
             {
                 let connection_success_log =
                     types::Logs::new(types::LogType::Success, "Connection established");
                 app.lock().unwrap().logs = connection_success_log;
             }
 
-            let (mut ws_writer, ws_reader) = socket.split();
+            let (_ws_writer, ws_reader) = socket.split();
 
             let ws_reader_handler = tokio::spawn(async move {
                 ws_reader
@@ -72,8 +90,8 @@ pub async fn event_handler(app: Arc<Mutex<types::App>>, receiver: Receiver<types
             let app_message_handler = tokio::spawn(async move {
                 while let Ok(ui_message) = receiver.recv() {
                     match ui_message {
-                        types::UiMessage::ProgressUpdate(progress) => {}
-                        types::UiMessage::Challenge(player_id) => {}
+                        types::UiMessage::ProgressUpdate(_progress) => {}
+                        types::UiMessage::Challenge(_player_id) => {}
                     }
                 }
             });

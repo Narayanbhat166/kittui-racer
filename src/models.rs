@@ -8,14 +8,16 @@ pub enum WebsocketMessage {
         progress: u16,
     },
     Challenge {
-        current_user_id: String,
-        opponent_user_id: String,
+        // The current player, who is prompting other user for a game
+        challanger_user_id: String,
+        // One to whom a challenge is made
+        challenge_user_id: String,
     },
     UserStatus {
         connected_users: Vec<User>,
     },
     SuccessfulConnection {
-        user_id: usize,
+        user: User,
     },
     ChatMessage {
         user_id: String,
@@ -33,7 +35,7 @@ pub enum UserStatus {
 pub struct User {
     pub id: usize,
     pub status: UserStatus,
-    pub display_name: Option<String>,
+    pub display_name: String,
 }
 
 pub enum GameStatus {
@@ -44,6 +46,6 @@ pub enum GameStatus {
 }
 
 pub struct GameData {
-    users: Vec<User>,
-    status: GameStatus,
+    _users: Vec<User>,
+    _status: GameStatus,
 }

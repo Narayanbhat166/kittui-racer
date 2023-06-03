@@ -40,13 +40,15 @@ fn draw_playground<B: Backend>(app: Arc<Mutex<App>>, playground_area: Rect, fram
         }
 
         // Draw the Players available for game
+        // Do not display the current user
         Tab::Arena => {
             let items = app
                 .state
                 .players
                 .items
                 .iter()
-                .map(|player| ListItem::new(player.id.to_string()))
+                .filter(|player| player.id != app.user_id)
+                .map(|player| ListItem::new(player.display_name.to_string()))
                 .collect::<Vec<_>>();
 
             let list = List::new(items)
