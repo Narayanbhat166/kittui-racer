@@ -23,8 +23,16 @@ pub enum TouchState {
 #[derive(Default, Clone)]
 pub enum CharState {
     #[default]
+    /// Either the cursor has not yet reached at the character at this position
+    /// or there was a backspace key press.
     Untouched,
+
+    /// This is the current cursor position, the character that has to be pressed next
     CursorPosition,
+
+    /// This is after a key has been pressed, the keypress can either be
+    /// `Valid` - Right key was pressed
+    /// `Invalid` - Wrong key was pressed
     Touched(TouchState),
 }
 
@@ -71,7 +79,7 @@ impl State {
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, PartialEq)]
 pub enum Tab {
     // This is where the player can play
     Game,
@@ -99,6 +107,7 @@ pub enum LogType {
     Error,
     #[default]
     Info,
+    Timeout(usize),
 }
 
 #[derive(Default)]

@@ -20,16 +20,21 @@ fn handle_incoming_websocket_message(
         }
         server_models::WebsocketMessage::Challenge {
             // Handle a challenge message from a challenger
-            // For the receiver, the meanings of those words are interchanged
+            // For the receiver, the meaning of words `challenger` and `challenge` are interchanged
             // Because the challenger will challenge with his user id in `challenger_user_id`
             // This is sent by the Master Cat ( server ), to the right challenger
             // If the receiver ( current user ), received this message, then it implies that
             // The other person challenged current user
-            challanger_user_id: _opponent_user_id,
+            challanger_user_id: opponent_user_id,
             challenge_user_id: _current_user_id,
         } => {
             // Show a prompt for the user to accept / reject the challenge
             // This should last only for few minutes, based on the expiry time
+            let log_message = types::Logs::new(
+                types::LogType::Timeout(5),
+                &format!("Challenge received from {opponent_user_id}"),
+            );
+            unlocked_app.logs = log_message;
         }
         server_models::WebsocketMessage::UserStatus { connected_users } => unlocked_app
             .state

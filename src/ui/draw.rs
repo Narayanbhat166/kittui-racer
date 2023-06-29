@@ -87,7 +87,7 @@ fn draw_bottom_bar<B: Backend>(app: Arc<Mutex<App>>, area: Rect, frame: &mut Fra
     let log_color = match app.logs.log_type {
         super::types::LogType::Success => Color::Green,
         super::types::LogType::Error => Color::Red,
-        super::types::LogType::Info => Color::Gray,
+        super::types::LogType::Info | super::types::LogType::Timeout(_) => Color::Gray,
     };
 
     let paragraph_widget = Paragraph::new(Text::from(app.logs.message.to_string()))
@@ -95,6 +95,28 @@ fn draw_bottom_bar<B: Backend>(app: Arc<Mutex<App>>, area: Rect, frame: &mut Fra
         .block(Block::default().borders(Borders::ALL).title("Logs"));
 
     frame.render_widget(paragraph_widget, area)
+}
+
+fn draw_progress_bar<B: Backend>(app: Arc<Mutex<App>>, area: Rect, frame: &mut Frame<B>) {
+    let app = app.lock().unwrap();
+
+    // Draw progress bar only in game mode
+    if app.current_tab == Tab::Game {
+        let progress = app.state.cursor_position as f64 / app.state.prompt.len() as f64;
+        let progress = (progress * 100.0) as u16;
+
+        let gauge = Gauge::default()
+            .block(Block::default().borders(Borders::ALL).title("Progress"))
+            .gauge_style(
+                Style::default()
+                    .fg(Color::White)
+                    .bg(Color::Black)
+                    .add_modifier(Modifier::ITALIC),
+            )
+            .percent(progress);
+
+        frame.render_widget(gauge, area);
+    }
 }
 
 /// Draw the UI from layout
@@ -107,20 +129,5 @@ pub fn draw_ui_from_layout<B: Backend>(
 ) {
     draw_playground(app.clone(), layouts.playground, frame);
     draw_bottom_bar(app.clone(), layouts.bottom_bar, frame);
-
-    let app = app.lock().unwrap();
-    let progress = app.state.cursor_position as f64 / app.state.prompt.len() as f64;
-    let progress = (progress * 100.0) as u16;
-
-    let gauge = Gauge::default()
-        .block(Block::default().borders(Borders::ALL).title("Progress"))
-        .gauge_style(
-            Style::default()
-                .fg(Color::White)
-                .bg(Color::Black)
-                .add_modifier(Modifier::ITALIC),
-        )
-        .percent(progress);
-
-    frame.render_widget(gauge, layouts.progress_bar);
+    draw_progress_bar(app.clone(), layouts.progress_bar, frame);
 }
