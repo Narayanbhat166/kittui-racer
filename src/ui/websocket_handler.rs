@@ -3,7 +3,7 @@ use std::sync::{mpsc::Receiver, Arc, Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::{models as server_models, ui::types};
-const WS_URL: &'static str = "ws://localhost:8080";
+const WS_URL: &str = "ws://localhost:8080";
 
 fn handle_incoming_websocket_message(
     app: Arc<Mutex<types::App>>,
@@ -29,12 +29,11 @@ fn handle_incoming_websocket_message(
             challenge_user_id: _current_user_id,
         } => {
             // Show a prompt for the user to accept / reject the challenge
-            // This should last only for few minutes, based on the expiry time
-            let log_message = types::Logs::new(
-                types::LogType::Timeout(5),
-                &format!("Challenge received from {opponent_user_id}"),
-            );
-            unlocked_app.logs = log_message;
+            // This should last only for few seconds, based on the expiry time
+            // TODO: add expiry time
+            unlocked_app.add_log_event(types::Event::info(&format!(
+                "Challenge received from {opponent_user_id}"
+            )));
         }
         server_models::WebsocketMessage::UserStatus { connected_users } => unlocked_app
             .state
@@ -43,12 +42,12 @@ fn handle_incoming_websocket_message(
         server_models::WebsocketMessage::SuccessfulConnection { user } => {
             // This is the user id of the client, store it in app state
             // This is helpful in order to hide the current user in the players list
-            unlocked_app.user_id = user.id;
-            let log_message = types::Logs::new(
-                types::LogType::Info,
-                &format!("Master Cat assigned name {} to you", user.display_name),
-            );
-            unlocked_app.logs = log_message;
+            unlocked_app.user_id = Some(user.id);
+            let name_assign_log_event = types::Event::success(&format!(
+                "Master Cat assigned name {} to you",
+                user.display_name
+            ));
+            unlocked_app.add_log_event(name_assign_log_event);
         }
         server_models::WebsocketMessage::ChatMessage {
             user_id: _,
@@ -71,8 +70,8 @@ pub async fn event_handler(app: Arc<Mutex<types::App>>, receiver: Receiver<types
         Ok((socket, _response)) => {
             {
                 let connection_success_log =
-                    types::Logs::new(types::LogType::Success, "Connection established");
-                app.lock().unwrap().logs = connection_success_log;
+                    types::Event::success("Websocket connection established");
+                app.lock().unwrap().add_log_event(connection_success_log);
             }
 
             let (_ws_writer, ws_reader) = socket.split();
@@ -105,9 +104,11 @@ pub async fn event_handler(app: Arc<Mutex<types::App>>, receiver: Receiver<types
         }
         Err(socket_connect_error) => {
             let mut app = app.lock().unwrap();
-            let error_log =
-                types::Logs::new(types::LogType::Error, &socket_connect_error.to_string());
-            app.logs = error_log;
+            let error_log_event = types::Event::new(
+                types::LogType::Error,
+                &format!("Could not create websocket connection {socket_connect_error}"),
+            );
+            app.add_log_event(error_log_event);
         }
     }
 }

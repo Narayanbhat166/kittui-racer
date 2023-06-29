@@ -8,7 +8,7 @@ pub struct StatefulList<T> {
 impl<T> StatefulList<T> {
     pub fn with_items(items: Vec<T>) -> StatefulList<T> {
         let mut state = ListState::default();
-        state.select(items.first().map(|_| 0 as usize));
+        state.select(items.first().map(|_| 0_usize));
         StatefulList { state, items }
     }
 
@@ -25,13 +25,6 @@ impl<T> StatefulList<T> {
         self.state
             .selected()
             .and_then(|selected_index| self.items.get(selected_index))
-    }
-
-    pub fn new() -> Self {
-        Self {
-            state: ListState::default(),
-            items: vec![],
-        }
     }
 
     pub fn add_item(&mut self, item: T) {

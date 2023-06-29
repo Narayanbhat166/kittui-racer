@@ -13,7 +13,7 @@ use crate::ui::{
 /// Check whether the entered key is same as expected
 /// Update the state of characters based on this
 pub fn handle_game_input(app: &mut types::App, input: KeyCode) -> bool {
-    let position = app.state.cursor_position.clone() as usize;
+    let position = app.state.cursor_position as usize;
     match input {
         KeyCode::Char(character) => {
             if app
@@ -48,7 +48,7 @@ pub fn handle_game_input(app: &mut types::App, input: KeyCode) -> bool {
                 true
             }
         }
-        KeyCode::Esc => return true,
+        KeyCode::Esc => true,
         _ => false,
     }
 }
@@ -77,10 +77,9 @@ pub fn handle_arena_input(app: &mut types::App, input: KeyCode) -> bool {
             // Challenge the player
             // Steps to be taken
             // Send Challenge(player_id), message to be handled by the websocket
-            app.state
-                .players
-                .get_selected_item()
-                .map(|selected_player| selected_player.challenge(app.event_sender.clone()));
+            if let Some(player) = app.state.players.get_selected_item() {
+                player.challenge(app.event_sender.clone())
+            }
             false
         }
         TransitionAction::Quit => true,
@@ -113,12 +112,12 @@ pub fn handle_menu_input(app: &mut types::App, input: KeyCode) -> bool {
             .menu
             .state
             .selected()
-            .and_then(|index| {
+            .map(|index| {
                 match index {
                     0 => app.current_tab = types::Tab::Arena,
                     _ => app.current_tab = types::Tab::Game,
                 }
-                Some(false)
+                false
             })
             .unwrap_or(false),
         TransitionAction::Quit => true,

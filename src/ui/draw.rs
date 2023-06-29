@@ -36,7 +36,7 @@ fn draw_playground<B: Backend>(app: Arc<Mutex<App>>, playground_area: Rect, fram
                 .block(Block::default().borders(Borders::ALL))
                 .alignment(tui::layout::Alignment::Center);
 
-            frame.render_widget(drawable, playground_area)
+            frame.render_widget(drawable, playground_area);
         }
 
         // Draw the Players available for game
@@ -47,7 +47,7 @@ fn draw_playground<B: Backend>(app: Arc<Mutex<App>>, playground_area: Rect, fram
                 .players
                 .items
                 .iter()
-                .filter(|player| player.id != app.user_id)
+                .filter(|player| player.id != app.user_id.unwrap_or_default())
                 .map(|player| ListItem::new(player.display_name.to_string()))
                 .collect::<Vec<_>>();
 
@@ -84,15 +84,21 @@ fn draw_playground<B: Backend>(app: Arc<Mutex<App>>, playground_area: Rect, fram
 fn draw_bottom_bar<B: Backend>(app: Arc<Mutex<App>>, area: Rect, frame: &mut Frame<B>) {
     let app = app.lock().unwrap();
 
-    let log_color = match app.logs.log_type {
-        super::types::LogType::Success => Color::Green,
-        super::types::LogType::Error => Color::Red,
-        super::types::LogType::Info | super::types::LogType::Timeout(_) => Color::Gray,
-    };
+    let log_color = app
+        .events
+        .as_ref()
+        .map(|event| event.log_type.get_color())
+        .unwrap_or(Color::Gray);
 
-    let paragraph_widget = Paragraph::new(Text::from(app.logs.message.to_string()))
+    let event_message = app
+        .events
+        .as_ref()
+        .map(|event| event.message.to_owned())
+        .unwrap_or("No new events to display".to_string());
+
+    let paragraph_widget = Paragraph::new(Text::from(event_message))
         .style(Style::default().fg(log_color))
-        .block(Block::default().borders(Borders::ALL).title("Logs"));
+        .block(Block::default().borders(Borders::ALL).title("Events"));
 
     frame.render_widget(paragraph_widget, area)
 }
@@ -129,5 +135,7 @@ pub fn draw_ui_from_layout<B: Backend>(
 ) {
     draw_playground(app.clone(), layouts.playground, frame);
     draw_bottom_bar(app.clone(), layouts.bottom_bar, frame);
-    draw_progress_bar(app.clone(), layouts.progress_bar, frame);
+
+    // This will be drawn only in case of game mode
+    draw_progress_bar(app, layouts.progress_bar, frame);
 }

@@ -1,4 +1,4 @@
-use std::sync::mpsc::Sender;
+use std::{sync::mpsc::Sender, time};
 
 use crossterm::event::KeyCode;
 use tui::{
@@ -68,8 +68,8 @@ pub struct State {
     pub menu: StatefulList<&'static str>,
 }
 
-impl State {
-    pub fn new() -> Self {
+impl Default for State {
+    fn default() -> Self {
         Self {
             prompt: vec![],
             cursor_position: 0,
@@ -101,27 +101,50 @@ impl Tab {
     }
 }
 
-#[derive(Default)]
 pub enum LogType {
     Success,
     Error,
-    #[default]
     Info,
-    Timeout(usize),
 }
 
-#[derive(Default)]
-pub struct Logs {
+impl LogType {
+    pub fn get_color(&self) -> Color {
+        match self {
+            LogType::Success => Color::Green,
+            LogType::Error => Color::Red,
+            LogType::Info => Color::Gray,
+        }
+    }
+}
+
+// #[derive(Default)]
+pub struct Event {
     pub log_type: LogType,
     pub message: String,
+    pub duration: time::Duration,
+    pub created_at: time::Instant,
 }
 
-impl Logs {
+impl Event {
     pub fn new(log_type: LogType, message: &str) -> Self {
         Self {
             log_type,
             message: message.to_string(),
+            duration: time::Duration::from_secs(1),
+            created_at: time::Instant::now(),
         }
+    }
+
+    pub fn success(message: &str) -> Self {
+        Self::new(LogType::Success, message)
+    }
+
+    pub fn error(message: &str) -> Self {
+        Self::new(LogType::Error, message)
+    }
+
+    pub fn info(message: &str) -> Self {
+        Self::new(LogType::Info, message)
     }
 }
 
@@ -132,8 +155,8 @@ pub struct App {
     // The state of application
     pub state: State,
     // User id of the connection
-    pub user_id: usize,
-    pub logs: Logs,
+    pub user_id: Option<usize>,
+    pub events: Option<Event>,
     pub event_sender: Sender<UiMessage>,
 }
 
@@ -155,7 +178,6 @@ impl App {
     pub fn new(event_sender: Sender<UiMessage>) -> Self {
         let mut transformed_quote_str = String::from("Things we do for love")
             .chars()
-            .into_iter()
             .map(PromptKey::new)
             .collect::<Vec<_>>();
 
@@ -164,11 +186,15 @@ impl App {
 
         Self {
             current_tab: Tab::default(),
-            logs: Logs::default(),
-            user_id: usize::default(),
-            state: State::new(),
+            events: None,
+            user_id: None,
+            state: State::default(),
             event_sender,
         }
+    }
+
+    pub fn add_log_event(&mut self, event: Event) {
+        self.events = Some(event)
     }
 }
 
