@@ -1,4 +1,3 @@
-// #![deny(warnings)]
 use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -41,7 +40,6 @@ async fn main() {
     // Keep track of all connected users, key is usize, value
     // is a websocket sender.
     let users = UserConnections::default();
-    // Turn our "state" into a new Filter...
     let addr = env::args()
         .nth(1)
         .unwrap_or_else(|| "127.0.0.1:8080".to_string());
@@ -51,7 +49,7 @@ async fn main() {
     let listener = try_socket.expect("Failed to bind");
     println!("Listening on: {}", addr);
 
-    // Let's spawn the handling of each connection in a separate task.
+    // Spawn the handling of each connection in a separate task.
     while let Ok((stream, addr)) = listener.accept().await {
         let cloned_users = users.clone();
         tokio::spawn(async move {
@@ -60,14 +58,14 @@ async fn main() {
                 .expect("Error during the websocket handshake occurred");
             println!("WebSocket connection established: {}", addr);
 
-            user_connected(ws_stream, cloned_users).await;
+            handle_new_websocket_connection(ws_stream, cloned_users).await;
         });
     }
 }
 
 // fn broadcast_user_status(my_id: usize, users_db: &UsersDb, )
 
-async fn user_connected(ws: WebSocketStream<TcpStream>, users: UserConnections) {
+async fn handle_new_websocket_connection(ws: WebSocketStream<TcpStream>, users: UserConnections) {
     // Use a counter to assign a new unique ID for this user.
     let my_id = NEXT_USER_ID.fetch_add(1, Ordering::Relaxed);
 
@@ -114,7 +112,6 @@ async fn user_connected(ws: WebSocketStream<TcpStream>, users: UserConnections) 
     };
 
     users.write().await.insert(my_id, user_connection_details);
-    // users_db.write().await.insert(my_id, new_user);
 
     let all_users = users
         .read()
@@ -133,8 +130,7 @@ async fn user_connected(ws: WebSocketStream<TcpStream>, users: UserConnections) 
     )
     .await;
 
-    // Every time the user sends a message, broadcast it to
-    // all other users...
+    // Handle the messages sent by the user
     while let Some(result) = user_ws_rx.next().await {
         match result {
             Ok(websocket_user_message) => {
@@ -142,16 +138,34 @@ async fn user_connected(ws: WebSocketStream<TcpStream>, users: UserConnections) 
 
                 match websocket_user_message {
                     Message::Text(text_message) => {
-                        broadcast_message(
-                            my_id,
-                            models::WebsocketMessage::ChatMessage {
-                                user_id: my_id.to_string(),
-                                message: text_message,
-                            },
-                            &users,
-                            false,
-                        )
-                        .await;
+                        let parsed_message =
+                            serde_json::from_str::<models::WebsocketMessage>(&text_message)
+                                .expect("Unable to parse websocket message");
+
+                        match parsed_message {
+                            models::WebsocketMessage::Progress { .. } => {}
+                            models::WebsocketMessage::Challenge {
+                                challanger_user_id: _from_user_id,
+                                challengee_user_id: to_user_id,
+                                ..
+                            } => {
+                                // Send the message to challenge user
+                                let users_read = users.read().await;
+
+                                let (_user_id, user_connection) = users_read
+                                    .iter()
+                                    .find(|(user_id, _)| user_id.to_string() == to_user_id)
+                                    .unwrap(); // TODO: no user found error
+
+                                user_connection
+                                    .sender
+                                    .send(Message::Text(text_message))
+                                    .unwrap();
+                            }
+                            models::WebsocketMessage::UserStatus { .. } => {}
+                            models::WebsocketMessage::SuccessfulConnection { .. } => {}
+                            models::WebsocketMessage::ChatMessage { .. } => {}
+                        }
                     }
                     Message::Close(_close_frame) => {}
                     _ => {}
@@ -217,51 +231,3 @@ async fn user_disconnected(my_id: usize, users: &UserConnections) {
     // Stream closed up, so remove from the user list
     users.write().await.remove(&my_id);
 }
-
-static _INDEX_HTML: &str = r#"<!DOCTYPE html>
-<html lang="en">
-    <head>
-        <title>Warp Chat</title>
-    </head>
-    <body>
-        <h1>Warp chat</h1>
-        <div id="chat">
-            <p><em>Connecting...</em></p>
-        </div>
-        <input type="text" id="text" />
-        <button type="button" id="send">Send</button>
-        <script type="text/javascript">
-        const chat = document.getElementById('chat');
-        const text = document.getElementById('text');
-        const uri = 'ws://' + location.host + '/';
-        const ws = new WebSocket(uri);
-
-        function message(data) {
-            const line = document.createElement('p');
-            line.innerText = data;
-            chat.appendChild(line);
-        }
-
-        ws.onopen = function() {
-            chat.innerHTML = '<p><em>Connected!</em></p>';
-        };
-
-        ws.onmessage = function(msg) {
-            message(msg.data);
-        };
-
-        ws.onclose = function() {
-            chat.getElementsByTagName('em')[0].innerText = 'Disconnected!';
-        };
-
-        send.onclick = function() {
-            const msg = text.value;
-            ws.send(msg);
-            text.value = '';
-
-            message('<You>: ' + msg);
-        };
-        </script>
-    </body>
-</html>
-"#;

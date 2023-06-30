@@ -45,8 +45,7 @@ use tui::{
     Frame, Terminal,
 };
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     // setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -54,13 +53,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // create app and run it
-    let (sender, receiver) = mpsc::channel::<UiMessage>();
+    let (sender, mut receiver) = mpsc::channel::<UiMessage>();
     let app = Arc::new(Mutex::new(App::new(sender)));
 
     let app_clone = app.clone();
-    tokio::spawn(async move {
-        websocket_handler::event_handler(app.clone(), receiver).await;
+    std::thread::spawn(move || {
+        websocket_handler::event_handler(app.clone(), &mut receiver);
     });
 
     let res = run_app(&mut terminal, app_clone);

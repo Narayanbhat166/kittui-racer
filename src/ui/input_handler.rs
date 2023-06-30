@@ -78,7 +78,7 @@ pub fn handle_arena_input(app: &mut types::App, input: KeyCode) -> bool {
             // Steps to be taken
             // Send Challenge(player_id), message to be handled by the websocket
             if let Some(player) = app.state.players.get_selected_item() {
-                player.challenge(app.event_sender.clone())
+                player.challenge(app.current_user.as_ref().unwrap(), app.event_sender.clone())
             }
             false
         }

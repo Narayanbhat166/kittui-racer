@@ -1,10 +1,12 @@
-use std::{sync::mpsc::Sender, time};
+use std::{sync::mpsc, time};
 
 use crossterm::event::KeyCode;
 use tui::{
     layout::Rect,
     style::{Color, Modifier, Style},
 };
+
+pub use models::UserStatus;
 
 use crate::{models, ui::stateful_list::StatefulList};
 
@@ -51,12 +53,15 @@ impl CharState {
 }
 
 // For the client, each user is a player
-type Player = models::User;
+pub type Player = models::User;
 
 impl Player {
-    // Send a challenge message for the player
-    pub fn challenge(&self, sender: Sender<UiMessage>) {
-        let message = UiMessage::Challenge(self.id);
+    // Send a challenge message to the player
+    pub fn challenge(&self, current_user: &Player, sender: mpsc::Sender<UiMessage>) {
+        let message = UiMessage::Challenge {
+            user_name: current_user.display_name.clone(),
+            user_id: self.id.to_string(),
+        };
         sender.send(message).unwrap();
     }
 }
@@ -155,9 +160,9 @@ pub struct App {
     // The state of application
     pub state: State,
     // User id of the connection
-    pub user_id: Option<usize>,
+    pub current_user: Option<Player>,
     pub events: Option<Event>,
-    pub event_sender: Sender<UiMessage>,
+    pub event_sender: mpsc::Sender<UiMessage>,
 }
 
 pub struct PromptKey {
@@ -175,7 +180,7 @@ impl PromptKey {
 }
 
 impl App {
-    pub fn new(event_sender: Sender<UiMessage>) -> Self {
+    pub fn new(event_sender: mpsc::Sender<UiMessage>) -> Self {
         let mut transformed_quote_str = String::from("Things we do for love")
             .chars()
             .map(PromptKey::new)
@@ -187,7 +192,7 @@ impl App {
         Self {
             current_tab: Tab::default(),
             events: None,
-            user_id: None,
+            current_user: None,
             state: State::default(),
             event_sender,
         }
@@ -200,5 +205,10 @@ impl App {
 
 pub enum UiMessage {
     ProgressUpdate(usize),
-    Challenge(usize),
+    Challenge {
+        /// Username of the current player
+        user_name: String,
+        /// User id of the player who is challenged
+        user_id: String,
+    },
 }

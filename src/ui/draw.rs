@@ -47,7 +47,7 @@ fn draw_playground<B: Backend>(app: Arc<Mutex<App>>, playground_area: Rect, fram
                 .players
                 .items
                 .iter()
-                .filter(|player| player.id != app.user_id.unwrap_or_default())
+                .filter(|player| player.id != app.current_user.as_ref().unwrap().id) // user_id will have been set
                 .map(|player| ListItem::new(player.display_name.to_string()))
                 .collect::<Vec<_>>();
 

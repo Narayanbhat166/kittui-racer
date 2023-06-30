@@ -1,5 +1,5 @@
-use futures_util::{join, StreamExt};
-use std::sync::{mpsc::Receiver, Arc, Mutex};
+use futures_util::{SinkExt, StreamExt};
+use std::sync::{mpsc, Arc, Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::{models as server_models, ui::types};
@@ -25,29 +25,41 @@ fn handle_incoming_websocket_message(
             // This is sent by the Master Cat ( server ), to the right challenger
             // If the receiver ( current user ), received this message, then it implies that
             // The other person challenged current user
-            challanger_user_id: opponent_user_id,
-            challenge_user_id: _current_user_id,
+            challanger_user_id: _opponent_user_id,
+            challengee_user_id: _current_user_id,
+            challenger_name: opponent_name,
         } => {
             // Show a prompt for the user to accept / reject the challenge
             // This should last only for few seconds, based on the expiry time
             // TODO: add expiry time
             unlocked_app.add_log_event(types::Event::info(&format!(
-                "Challenge received from {opponent_user_id}"
+                "Challenge received from {}",
+                opponent_name
             )));
         }
-        server_models::WebsocketMessage::UserStatus { connected_users } => unlocked_app
-            .state
-            .players
-            .clear_and_insert_items(connected_users),
+        server_models::WebsocketMessage::UserStatus { connected_users } => {
+            // filter out current user
+            let users_without_current_user = connected_users
+                .into_iter()
+                .filter(|user| user.id != unlocked_app.current_user.as_ref().unwrap().id)
+                .collect();
+            unlocked_app
+                .state
+                .players
+                .clear_and_insert_items(users_without_current_user)
+        }
         server_models::WebsocketMessage::SuccessfulConnection { user } => {
-            // This is the user id of the client, store it in app state
-            // This is helpful in order to hide the current user in the players list
-            unlocked_app.user_id = Some(user.id);
             let name_assign_log_event = types::Event::success(&format!(
                 "Master Cat assigned name {} to you",
                 user.display_name
             ));
             unlocked_app.add_log_event(name_assign_log_event);
+            // User details of the current user
+            unlocked_app.current_user = Some(types::Player {
+                id: user.id,
+                status: types::UserStatus::Available,
+                display_name: user.display_name,
+            });
         }
         server_models::WebsocketMessage::ChatMessage {
             user_id: _,
@@ -58,23 +70,30 @@ fn handle_incoming_websocket_message(
     }
 }
 
-pub async fn event_handler(app: Arc<Mutex<types::App>>, receiver: Receiver<types::UiMessage>) {
+#[tokio::main]
+pub async fn event_handler(
+    app: Arc<Mutex<types::App>>,
+    ui_message_receiver: &mut mpsc::Receiver<types::UiMessage>,
+) {
     // Handle the ui input in a separate tokio task
     // This is because we do not want the event handler to go down because websocket connection failed
     // The join handlers can then be polled using the join!() macro
     let url = url::Url::parse(WS_URL).expect("Unable to parse the url");
 
-    // This error should be caught and logged
     let connect_socket_result = connect_async(url).await;
+    let cloned_app = app.clone();
     match connect_socket_result {
         Ok((socket, _response)) => {
             {
                 let connection_success_log =
                     types::Event::success("Websocket connection established");
-                app.lock().unwrap().add_log_event(connection_success_log);
+                app.clone()
+                    .lock()
+                    .unwrap()
+                    .add_log_event(connection_success_log);
             }
 
-            let (_ws_writer, ws_reader) = socket.split();
+            let (mut ws_writer, ws_reader) = socket.split();
 
             let ws_reader_handler = tokio::spawn(async move {
                 ws_reader
@@ -85,22 +104,45 @@ pub async fn event_handler(app: Arc<Mutex<types::App>>, receiver: Receiver<types
                                 serde_json::from_str::<server_models::WebsocketMessage>(&message)
                                     .expect("Cannot parse incoming websocket message");
 
-                            handle_incoming_websocket_message(app.clone(), message)
+                            handle_incoming_websocket_message(cloned_app.clone(), message)
                         }
                     })
                     .await
             });
 
-            let app_message_handler = tokio::spawn(async move {
-                while let Ok(ui_message) = receiver.recv() {
-                    match ui_message {
-                        types::UiMessage::ProgressUpdate(_progress) => {}
-                        types::UiMessage::Challenge(_player_id) => {}
-                    }
-                }
-            });
+            while let Ok(ui_message) = ui_message_receiver.recv() {
+                let ws_message = match ui_message {
+                    types::UiMessage::ProgressUpdate(_progress) => None,
+                    types::UiMessage::Challenge { user_name, user_id } => {
+                        let websocket_message = server_models::WebsocketMessage::Challenge {
+                            challanger_user_id: app
+                                .clone()
+                                .lock()
+                                .unwrap()
+                                .current_user
+                                .as_ref()
+                                .unwrap()
+                                .id
+                                .to_string(),
+                            challengee_user_id: user_id,
+                            challenger_name: user_name,
+                        };
 
-            _ = join!(ws_reader_handler, app_message_handler)
+                        let websocket_message_string =
+                            serde_json::to_string(&websocket_message).unwrap(); // When can this fail?
+
+                        Some(websocket_message_string)
+                    }
+                };
+
+                if let Some(message) = ws_message {
+                    //todo: add error log
+                    ws_writer.send(Message::Text(message)).await.unwrap();
+                }
+            }
+
+            //Todo: handle this unwrap
+            ws_reader_handler.await.unwrap();
         }
         Err(socket_connect_error) => {
             let mut app = app.lock().unwrap();

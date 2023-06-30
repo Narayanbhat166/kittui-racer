@@ -11,7 +11,9 @@ pub enum WebsocketMessage {
         // The current player, who is prompting other user for a game
         challanger_user_id: String,
         // One to whom a challenge is made
-        challenge_user_id: String,
+        challengee_user_id: String,
+        // The name of challenger
+        challenger_name: String,
     },
     UserStatus {
         connected_users: Vec<User>,
