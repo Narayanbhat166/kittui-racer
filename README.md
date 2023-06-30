@@ -1,3 +1,10 @@
+# A terminal type racer
+Play typeracer with your friends at the comfort of your terminal.
+
+## Server Architecture
+<img width="1374" alt="Screenshot 2023-06-30 at 10 18 47 PM" src="https://github.com/Narayanbhat166/kittui-racer/assets/48803246/c6b07871-b136-4f49-8c20-4f7d3b0c405c">
+
+
 ## The process
 
 - Client/Player opens the terminal application.
@@ -6,7 +13,7 @@
   currently online ( It can also show if a user is in a game or available ).
 - The Player can choose any of the online players who are available and challenge
   for a game by sending a `Challenge(opponent_user_id)` message. Currently only one vs one is supported.
-- The chanllenge can acccept the challenge by sending `AcceptChallenge(challenge_id)`, if so the game starts.
+- The opponent can acccept the challenge by sending `AcceptChallenge(challenge_id)`, if so, the game starts.
 
 ## Starting of the game
 
