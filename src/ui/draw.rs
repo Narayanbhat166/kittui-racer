@@ -54,7 +54,7 @@ fn draw_playground<B: Backend>(app: Arc<Mutex<App>>, playground_area: Rect, fram
             let list = List::new(items)
                 .block(Block::default().borders(Borders::ALL).title("List"))
                 .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-                .highlight_symbol(">> ");
+                .highlight_symbol("█ ");
 
             frame.render_stateful_widget(list, playground_area, &mut app.state.players.state)
         }
@@ -74,7 +74,7 @@ fn draw_playground<B: Backend>(app: Arc<Mutex<App>>, playground_area: Rect, fram
             let list = List::new(list_items)
                 .block(Block::default().borders(Borders::ALL).title("Menu"))
                 .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-                .highlight_symbol("> ");
+                .highlight_symbol("█ ");
 
             frame.render_stateful_widget(list, playground_area, &mut app.state.menu.state)
         }

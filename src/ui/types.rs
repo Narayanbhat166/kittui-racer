@@ -1,4 +1,4 @@
-use std::{sync::mpsc, time};
+use std::time;
 
 use crossterm::event::KeyCode;
 use tui::{
@@ -57,12 +57,12 @@ pub type Player = models::User;
 
 impl Player {
     // Send a challenge message to the player
-    pub fn challenge(&self, current_user: &Player, sender: mpsc::Sender<UiMessage>) {
+    pub fn challenge(&self, current_user: &Player, sender: tokio::sync::mpsc::Sender<UiMessage>) {
         let message = UiMessage::Challenge {
             user_name: current_user.display_name.clone(),
             user_id: self.id.to_string(),
         };
-        sender.send(message).unwrap();
+        sender.blocking_send(message).unwrap();
     }
 }
 pub struct State {
@@ -71,6 +71,8 @@ pub struct State {
     pub cursor_position: u16,
     pub players: StatefulList<Player>,
     pub menu: StatefulList<&'static str>,
+    /// Whether the user is currently challenged
+    pub is_challenged: bool,
 }
 
 impl Default for State {
@@ -80,6 +82,7 @@ impl Default for State {
             cursor_position: 0,
             players: StatefulList::with_items(vec![]),
             menu: StatefulList::with_items(vec!["Game", "Practice"]),
+            is_challenged: false,
         }
     }
 }
@@ -162,7 +165,7 @@ pub struct App {
     // User id of the connection
     pub current_user: Option<Player>,
     pub events: Option<Event>,
-    pub event_sender: mpsc::Sender<UiMessage>,
+    pub event_sender: tokio::sync::mpsc::Sender<UiMessage>,
 }
 
 pub struct PromptKey {
@@ -180,7 +183,7 @@ impl PromptKey {
 }
 
 impl App {
-    pub fn new(event_sender: mpsc::Sender<UiMessage>) -> Self {
+    pub fn new(event_sender: tokio::sync::mpsc::Sender<UiMessage>) -> Self {
         let mut transformed_quote_str = String::from("Things we do for love")
             .chars()
             .map(PromptKey::new)
@@ -203,6 +206,7 @@ impl App {
     }
 }
 
+#[derive(Debug)]
 pub enum UiMessage {
     ProgressUpdate(usize),
     Challenge {

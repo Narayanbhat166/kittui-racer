@@ -1,5 +1,5 @@
 use futures_util::{SinkExt, StreamExt};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::{models as server_models, ui::types};
@@ -33,9 +33,10 @@ fn handle_incoming_websocket_message(
             // This should last only for few seconds, based on the expiry time
             // TODO: add expiry time
             unlocked_app.add_log_event(types::Event::info(&format!(
-                "Challenge received from {}",
+                "Challenge received from {}. Accept [A/a] | Reject [R/r]",
                 opponent_name
             )));
+            unlocked_app.state.is_challenged = true;
         }
         server_models::WebsocketMessage::UserStatus { connected_users } => {
             // filter out current user
@@ -70,10 +71,11 @@ fn handle_incoming_websocket_message(
     }
 }
 
-#[tokio::main]
+/// Handle the websocket events
+/// No blocking functions should be executed in this function
 pub async fn event_handler(
     app: Arc<Mutex<types::App>>,
-    ui_message_receiver: &mut mpsc::Receiver<types::UiMessage>,
+    mut ui_message_receiver: tokio::sync::mpsc::Receiver<types::UiMessage>,
 ) {
     // Handle the ui input in a separate tokio task
     // This is because we do not want the event handler to go down because websocket connection failed
@@ -110,7 +112,11 @@ pub async fn event_handler(
                     .await
             });
 
-            while let Ok(ui_message) = ui_message_receiver.recv() {
+            // If blocking channel ( std::sync::mpsc ) is used, it will block the current thread/task
+            // If a single threaded runtime is used, no progress can be made by other tasks
+            // So, a tokio channel must is used
+
+            while let Some(ui_message) = ui_message_receiver.recv().await {
                 let ws_message = match ui_message {
                     types::UiMessage::ProgressUpdate(_progress) => None,
                     types::UiMessage::Challenge { user_name, user_id } => {
@@ -144,6 +150,7 @@ pub async fn event_handler(
             //Todo: handle this unwrap
             ws_reader_handler.await.unwrap();
         }
+
         Err(socket_connect_error) => {
             let mut app = app.lock().unwrap();
             let error_log_event = types::Event::new(

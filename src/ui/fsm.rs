@@ -30,4 +30,5 @@ pub enum TransitionAction {
     Nop,
     Init,
     Quit,
+    AcceptChallenge,
 }

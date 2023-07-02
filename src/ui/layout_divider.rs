@@ -1,6 +1,13 @@
 use super::types;
 use tui::layout::{Constraint, Direction, Layout, Rect};
 
+pub fn split_half_horizontally(area: Rect) -> Vec<Rect> {
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+        .split(area)
+}
+
 pub fn divide_frame(main_frame_size: Rect) -> types::Layouts {
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)

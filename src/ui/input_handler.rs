@@ -56,12 +56,20 @@ pub fn handle_game_input(app: &mut types::App, input: KeyCode) -> bool {
 /// Handle challenging of players, and switching selection using arrow keys
 /// Returns a bool which indicates whether to quit the app or not
 pub fn handle_arena_input(app: &mut types::App, input: KeyCode) -> bool {
-    let action = match input {
-        KeyCode::Down | KeyCode::Char('j') => TransitionAction::MoveDown,
-        KeyCode::Up | KeyCode::Char('k') => TransitionAction::MoveUp,
-        KeyCode::Right | KeyCode::Enter | KeyCode::Char('l') => TransitionAction::Select,
-        KeyCode::Esc => TransitionAction::Quit,
-        _ => TransitionAction::Nop,
+    let action = if app.state.is_challenged {
+        match input {
+            KeyCode::Char('a') => TransitionAction::AcceptChallenge,
+            // Todo: blink the event bar
+            _ => TransitionAction::Nop,
+        }
+    } else {
+        match input {
+            KeyCode::Down | KeyCode::Char('j') => TransitionAction::MoveDown,
+            KeyCode::Up | KeyCode::Char('k') => TransitionAction::MoveUp,
+            KeyCode::Right | KeyCode::Enter | KeyCode::Char('l') => TransitionAction::Select,
+            KeyCode::Esc => TransitionAction::Quit,
+            _ => TransitionAction::Nop,
+        }
     };
 
     match action {
@@ -83,6 +91,7 @@ pub fn handle_arena_input(app: &mut types::App, input: KeyCode) -> bool {
             false
         }
         TransitionAction::Quit => true,
+
         _ => false,
     }
 }

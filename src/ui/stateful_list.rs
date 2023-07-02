@@ -13,12 +13,20 @@ impl<T> StatefulList<T> {
     }
 
     pub fn add_items(&mut self, items: Vec<T>) {
-        self.items.extend(items)
+        if !items.is_empty() {
+            self.state.select(Some(0))
+        }
+        self.items.extend(items);
     }
 
     pub fn clear_and_insert_items(&mut self, items: Vec<T>) {
+        // If the list was empty previously and new items has atleast one item, select 0th index
+        let should_select_0th_index = self.items.is_empty() && !items.is_empty();
         self.items.clear();
         self.items.extend(items);
+        if should_select_0th_index {
+            self.state.select(Some(0))
+        }
     }
 
     pub fn get_selected_item(&self) -> Option<&T> {

@@ -33,10 +33,7 @@ use kittui_racer::ui::{
 use std::{
     error::Error,
     io,
-    sync::{
-        mpsc::{self},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -53,15 +50,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let (sender, mut receiver) = mpsc::channel::<UiMessage>();
+    let (sender, receiver) = tokio::sync::mpsc::channel::<UiMessage>(32);
     let app = Arc::new(Mutex::new(App::new(sender)));
 
     let app_clone = app.clone();
+
+    // Handle the websocket events in a separate thread
     std::thread::spawn(move || {
-        websocket_handler::event_handler(app.clone(), &mut receiver);
+        let single_threaded_runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_io()
+            .build()
+            .unwrap();
+
+        // The created runtime is run on the current thread
+        single_threaded_runtime.block_on(websocket_handler::event_handler(app_clone, receiver))
     });
 
-    let res = run_app(&mut terminal, app_clone);
+    let res = run_app(&mut terminal, app);
 
     // restore terminal
     disable_raw_mode()?;
