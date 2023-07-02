@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Mutex},
+};
 
 use tui::{
     backend::Backend,
@@ -9,7 +12,7 @@ use tui::{
     Frame,
 };
 
-use crate::ui::types::{App, Layouts, Tab};
+use crate::ui::types::{self, App, Layouts, Tab};
 
 fn draw_playground<B: Backend>(app: Arc<Mutex<App>>, playground_area: Rect, frame: &mut Frame<B>) {
     // App locking is required for all the tab variants
@@ -81,23 +84,58 @@ fn draw_playground<B: Backend>(app: Arc<Mutex<App>>, playground_area: Rect, fram
     }
 }
 
+/// Get the current event and the modifier with which to display the event
+fn get_event_and_modifier(
+    events_vector: &mut VecDeque<types::Event>,
+) -> (Option<types::Event>, Modifier) {
+    // If there is just single event, just get the event modifier for display
+    if events_vector.len() <= 1 {
+        let event = events_vector.front_mut();
+        let event = event.map(|event| event.check_and_update_display_time());
+
+        let modifier = event
+            .as_ref()
+            .map(|event| event.get_display_modifier())
+            .unwrap_or(Modifier::empty());
+        (event.cloned(), modifier)
+    } else {
+        let old_event = events_vector
+            .front_mut()
+            .map(|event| event.check_and_update_display_time());
+        let recent_event = if let Some(event) = old_event {
+            if event.is_expired() {
+                events_vector.pop_front();
+                events_vector
+                    .front_mut()
+                    .map(|event| event.check_and_update_display_time())
+                    .cloned()
+            } else {
+                Some(event.clone())
+            }
+        } else {
+            None
+        };
+
+        let modifier = recent_event
+            .as_ref()
+            .map(|event| event.get_display_modifier())
+            .unwrap_or(Modifier::empty());
+
+        (recent_event, modifier)
+    }
+}
+
 fn draw_bottom_bar<B: Backend>(app: Arc<Mutex<App>>, area: Rect, frame: &mut Frame<B>) {
-    let app = app.lock().unwrap();
+    let mut app = app.lock().unwrap();
 
-    let log_color = app
-        .events
-        .as_ref()
-        .map(|event| event.log_type.get_color())
-        .unwrap_or(Color::Gray);
+    let (recent_event, modifier) = get_event_and_modifier(&mut app.events);
 
-    let event_message = app
-        .events
-        .as_ref()
-        .map(|event| event.message.to_owned())
-        .unwrap_or("No new events to display".to_string());
+    let (event_color, event_message) = recent_event
+        .map(|event| (event.log_type.get_color(), event.message.to_owned()))
+        .unwrap_or((Color::Yellow, "No new events to be displayed".to_string()));
 
     let paragraph_widget = Paragraph::new(Text::from(event_message))
-        .style(Style::default().fg(log_color))
+        .style(Style::default().fg(event_color).add_modifier(modifier))
         .block(Block::default().borders(Borders::ALL).title("Events"));
 
     frame.render_widget(paragraph_widget, area)
