@@ -1,4 +1,4 @@
-use std::time;
+use std::{collections::VecDeque, time};
 
 use crossterm::event::KeyCode;
 use tui::{
@@ -109,6 +109,7 @@ impl Tab {
     }
 }
 
+#[derive(Clone)]
 pub enum LogType {
     Success,
     Error,
@@ -125,12 +126,13 @@ impl LogType {
     }
 }
 
-// #[derive(Default)]
+#[derive(Clone)]
 pub struct Event {
     pub log_type: LogType,
     pub message: String,
     pub duration: time::Duration,
     pub created_at: time::Instant,
+    pub displayed_at: Option<time::Instant>,
 }
 
 impl Event {
@@ -140,6 +142,46 @@ impl Event {
             message: message.to_string(),
             duration: time::Duration::from_secs(1),
             created_at: time::Instant::now(),
+            displayed_at: None,
+        }
+    }
+
+    /// Update the displayed at time if not previously set
+    pub fn check_and_update_display_time(&mut self) -> &mut Self {
+        if self.displayed_at.is_none() {
+            self.displayed_at = Some(time::Instant::now());
+        }
+        self
+    }
+
+    /// Return true if the event has been displayed on the bottom bar for self.duration time units
+    pub fn is_expired(&self) -> bool {
+        let current_time = time::Instant::now();
+        let event_expiry_time = self.displayed_at.unwrap_or(self.created_at) + self.duration;
+
+        if current_time > event_expiry_time {
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Returns the modifier with which to display the event
+    /// New -> Event is in new state for 75% of it's time since it's display, Display in BOLD
+    /// Active -> Display the event without any modifier
+    /// Expired -> Display the event in DIM
+    pub fn get_display_modifier(&self) -> Modifier {
+        let time_elapsed_since_display =
+            time::Instant::now() - self.displayed_at.unwrap_or(self.created_at);
+
+        let age_percentage = time_elapsed_since_display.as_secs_f32() / self.duration.as_secs_f32();
+
+        if self.is_expired() {
+            Modifier::DIM
+        } else if age_percentage <= 0.75 {
+            Modifier::BOLD
+        } else {
+            Modifier::empty()
         }
     }
 
@@ -164,7 +206,8 @@ pub struct App {
     pub state: State,
     // User id of the connection
     pub current_user: Option<Player>,
-    pub events: Option<Event>,
+    // A queue of buffered events
+    pub events: VecDeque<Event>,
     pub event_sender: tokio::sync::mpsc::Sender<UiMessage>,
 }
 
@@ -194,7 +237,7 @@ impl App {
 
         Self {
             current_tab: Tab::default(),
-            events: None,
+            events: VecDeque::new(),
             current_user: None,
             state: State::default(),
             event_sender,
@@ -202,7 +245,7 @@ impl App {
     }
 
     pub fn add_log_event(&mut self, event: Event) {
-        self.events = Some(event)
+        self.events.push_back(event)
     }
 }
 

@@ -50,6 +50,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
+    // A channel to communicate events to websocket handler.
+    // Few events like challenging a player, progress update of a game
+    // has to be relayed to all users who are currently online
+    // these events are communicated by the application via this channel to webwocket handler
     let (sender, receiver) = tokio::sync::mpsc::channel::<UiMessage>(32);
     let app = Arc::new(Mutex::new(App::new(sender)));
 

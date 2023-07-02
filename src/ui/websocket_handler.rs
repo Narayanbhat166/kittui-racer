@@ -117,34 +117,49 @@ pub async fn event_handler(
             // So, a tokio channel must is used
 
             while let Some(ui_message) = ui_message_receiver.recv().await {
-                let ws_message = match ui_message {
-                    types::UiMessage::ProgressUpdate(_progress) => None,
+                let cloned_app = app.clone();
+                let mut unlocked_app = cloned_app.lock().unwrap();
+                match ui_message {
+                    types::UiMessage::ProgressUpdate(_progress) => {}
                     types::UiMessage::Challenge { user_name, user_id } => {
                         let websocket_message = server_models::WebsocketMessage::Challenge {
-                            challanger_user_id: app
-                                .clone()
-                                .lock()
-                                .unwrap()
+                            challanger_user_id: unlocked_app
                                 .current_user
                                 .as_ref()
                                 .unwrap()
                                 .id
                                 .to_string(),
                             challengee_user_id: user_id,
-                            challenger_name: user_name,
+                            challenger_name: user_name.to_owned(),
                         };
 
                         let websocket_message_string =
                             serde_json::to_string(&websocket_message).unwrap(); // When can this fail?
 
-                        Some(websocket_message_string)
+                        let res = ws_writer
+                            .send(Message::Text(websocket_message_string))
+                            .await
+                            .map_err(|error| {
+                                let event = types::Event::error(&format!(
+                                    "Could not send challenge because of error {error:?}"
+                                ));
+                                event
+                            })
+                            .map(|_| {
+                                let event = types::Event::success(&format!(
+                                    "Successfully sent the challenge to {user_name}",
+                                ));
+                                event
+                            });
+
+                        let event = match res {
+                            Ok(event) => event,
+                            Err(event) => event,
+                        };
+
+                        unlocked_app.add_log_event(event);
                     }
                 };
-
-                if let Some(message) = ws_message {
-                    //todo: add error log
-                    ws_writer.send(Message::Text(message)).await.unwrap();
-                }
             }
 
             //Todo: handle this unwrap
