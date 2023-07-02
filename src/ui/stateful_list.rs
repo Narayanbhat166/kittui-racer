@@ -48,9 +48,13 @@ impl<T> StatefulList<T> {
                 .selected()
                 .map(|selected_index| {
                     // Check if selection is at the end of the list
-                    (selected_index + 1 == self.items.len())
-                        .then_some(0) // If so, set the selection back to index 0
-                        .unwrap_or(selected_index.saturating_add(1)) // else, increment the selection
+                    if selected_index + 1 == self.items.len() {
+                        // If so, set the selection back to index 0
+                        0
+                    } else {
+                        // else, increment the selection
+                        selected_index.saturating_add(1)
+                    }
                 })
                 .unwrap_or(0); // If no index is selected previously, select 0th index
             self.state.select(Some(next_selection));
@@ -66,9 +70,13 @@ impl<T> StatefulList<T> {
                 .selected()
                 .map(|selected_index| {
                     // Check if selection is at the beniggnningnngnnngggg of the list
-                    (selected_index == 0)
-                        .then_some(self.items.len() - 1) // If so, cycle back to last
-                        .unwrap_or(selected_index.saturating_sub(1)) // else, decrement the selection
+                    if selected_index == 0 {
+                        // If so, cycle back to last
+                        self.items.len() - 1
+                    } else {
+                        // else, decrement the selection
+                        selected_index.saturating_sub(1)
+                    }
                 })
                 .unwrap_or(0); // If no index is selected previously, select 0th index
             self.state.select(Some(select_previous));
