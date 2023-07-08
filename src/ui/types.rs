@@ -57,10 +57,10 @@ pub type Player = models::User;
 
 impl Player {
     // Send a challenge message to the player
-    pub fn challenge(&self, current_user: &Player, sender: tokio::sync::mpsc::Sender<UiMessage>) {
+    pub fn challenge(&self, sender: tokio::sync::mpsc::Sender<UiMessage>) {
         let message = UiMessage::Challenge {
-            user_name: current_user.display_name.clone(),
-            user_id: self.id.to_string(),
+            user_name: self.display_name.clone(),
+            user_id: self.id.clone(),
         };
         sender.blocking_send(message).unwrap();
     }
@@ -72,7 +72,7 @@ pub struct State {
     pub players: StatefulList<Player>,
     pub menu: StatefulList<&'static str>,
     /// Whether the user is currently challenged
-    pub is_challenged: bool,
+    pub challenge: Option<ChallengeData>,
 }
 
 impl Default for State {
@@ -82,7 +82,7 @@ impl Default for State {
             cursor_position: 0,
             players: StatefulList::with_items(vec![]),
             menu: StatefulList::with_items(vec!["Game", "Practice"]),
-            is_challenged: false,
+            challenge: None,
         }
     }
 }
@@ -136,11 +136,11 @@ pub struct Event {
 }
 
 impl Event {
-    pub fn new(log_type: LogType, message: &str) -> Self {
+    pub fn new(log_type: LogType, message: &str, duration: u8) -> Self {
         Self {
             log_type,
             message: message.to_string(),
-            duration: time::Duration::from_secs(1),
+            duration: time::Duration::from_secs(u64::from(duration)),
             created_at: time::Instant::now(),
             displayed_at: None,
         }
@@ -185,16 +185,17 @@ impl Event {
         }
     }
 
-    pub fn success(message: &str) -> Self {
-        Self::new(LogType::Success, message)
+    /// specify the message to be displayed and duration for which message should be displayed
+    pub fn success(message: &str, duration: u8) -> Self {
+        Self::new(LogType::Success, message, duration)
     }
 
-    pub fn error(message: &str) -> Self {
-        Self::new(LogType::Error, message)
+    pub fn error(message: &str, duration: u8) -> Self {
+        Self::new(LogType::Error, message, duration)
     }
 
-    pub fn info(message: &str) -> Self {
-        Self::new(LogType::Info, message)
+    pub fn info(message: &str, duration: u8) -> Self {
+        Self::new(LogType::Info, message, duration)
     }
 }
 
@@ -247,6 +248,24 @@ impl App {
     pub fn add_log_event(&mut self, event: Event) {
         self.events.push_back(event)
     }
+
+    pub fn accept_current_challenge(&mut self) {
+        if let Some(challenge_data) = self.state.challenge.as_ref() {
+            let accept_challenge_ui_message = UiMessage::AcceptChallenge {
+                user_id: challenge_data.opponent_id.to_owned(),
+            };
+            self.event_sender
+                .blocking_send(accept_challenge_ui_message)
+                .unwrap();
+        } else {
+            let invalid_action_error = Event::error("No active challenges to accept", 1);
+            self.add_log_event(invalid_action_error);
+        }
+    }
+}
+
+pub struct ChallengeData {
+    pub opponent_id: String,
 }
 
 #[derive(Debug)]
@@ -256,6 +275,10 @@ pub enum UiMessage {
         /// Username of the current player
         user_name: String,
         /// User id of the player who is challenged
+        user_id: String,
+    },
+    AcceptChallenge {
+        /// Username of the opponent
         user_id: String,
     },
 }

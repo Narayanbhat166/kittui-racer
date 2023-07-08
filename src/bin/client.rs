@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // A channel to communicate events to websocket handler.
     // Few events like challenging a player, progress update of a game
     // has to be relayed to all users who are currently online
-    // these events are communicated by the application via this channel to webwocket handler
+    // these events are communicated by the application via this channel to websocket handler
     let (sender, receiver) = tokio::sync::mpsc::channel::<UiMessage>(32);
     let app = Arc::new(Mutex::new(App::new(sender)));
 
@@ -61,12 +61,19 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Handle the websocket events in a separate thread
     std::thread::spawn(move || {
+        // A single threaded runtime is sufficient because there will not be much activity
+        // with regards to websocket on the client side.
         let single_threaded_runtime = tokio::runtime::Builder::new_current_thread()
             .enable_io()
             .build()
             .unwrap();
 
-        // The created runtime is run on the current thread
+        // The created runtime is run on the current thread.
+        // The current thread runtime does not spawn any background threads, so tokio::spawn()
+        // on the single threaded runtime does not work. It comes into effect only when block_on()
+        // is called.
+        //
+        // https://tokio.rs/tokio/topics/bridging
         single_threaded_runtime.block_on(websocket_handler::event_handler(app_clone, receiver))
     });
 

@@ -56,7 +56,7 @@ pub fn handle_game_input(app: &mut types::App, input: KeyCode) -> bool {
 /// Handle challenging of players, and switching selection using arrow keys
 /// Returns a bool which indicates whether to quit the app or not
 pub fn handle_arena_input(app: &mut types::App, input: KeyCode) -> bool {
-    let action = if app.state.is_challenged {
+    let action = if app.state.challenge.is_some() {
         match input {
             KeyCode::Char('a') => TransitionAction::AcceptChallenge,
             // Todo: blink the event bar
@@ -86,12 +86,15 @@ pub fn handle_arena_input(app: &mut types::App, input: KeyCode) -> bool {
             // Steps to be taken
             // Send Challenge(player_id), message to be handled by the websocket
             if let Some(player) = app.state.players.get_selected_item() {
-                player.challenge(app.current_user.as_ref().unwrap(), app.event_sender.clone())
+                player.challenge(app.event_sender.clone())
             }
             false
         }
         TransitionAction::Quit => true,
-
+        TransitionAction::AcceptChallenge => {
+            app.accept_current_challenge();
+            false
+        }
         _ => false,
     }
 }

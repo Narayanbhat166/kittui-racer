@@ -1,18 +1,17 @@
-use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
 
-use futures_util::{SinkExt, StreamExt, TryFutureExt};
-use tokio::sync::{
-    mpsc::{self, UnboundedSender},
-    RwLock,
-};
+use futures_util::StreamExt;
+use tokio::sync::mpsc::{self};
 
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
-use kittui_racer::{models, server_utils};
+use kittui_racer::{
+    models,
+    server_utils::{self, fast_storage},
+};
 
 /// Our global unique user id counter.
 static NEXT_USER_ID: AtomicUsize = AtomicUsize::new(1);
@@ -22,24 +21,13 @@ use std::env;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{tungstenite::protocol::Message, WebSocketStream};
 
-/// Our state of currently connected users.
-///
-/// - Key is their id
-struct UserConnection {
-    sender: mpsc::UnboundedSender<Message>,
-    data: models::User,
-}
-
-type UserConnections = Arc<RwLock<HashMap<usize, UserConnection>>>;
-// type UsersDb = Arc<RwLock<HashMap<usize, models::User>>>;
-
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
 
     // Keep track of all connected users, key is usize, value
     // is a websocket sender.
-    let users = UserConnections::default();
+    let database = Arc::new(fast_storage::BlazinglyFastDb::default());
     let addr = env::args()
         .nth(1)
         .unwrap_or_else(|| "127.0.0.1:8080".to_string());
@@ -51,84 +39,74 @@ async fn main() {
 
     // Spawn the handling of each connection in a separate task.
     while let Ok((stream, addr)) = listener.accept().await {
-        let cloned_users = users.clone();
+        let db = database.clone();
         tokio::spawn(async move {
             let ws_stream = tokio_tungstenite::accept_async(stream)
                 .await
                 .expect("Error during the websocket handshake occurred");
             println!("WebSocket connection established: {}", addr);
 
-            handle_new_websocket_connection(ws_stream, cloned_users).await;
+            handle_new_websocket_connection(ws_stream, db).await;
         });
     }
 }
 
 // fn broadcast_user_status(my_id: usize, users_db: &UsersDb, )
 
-async fn handle_new_websocket_connection(ws: WebSocketStream<TcpStream>, users: UserConnections) {
+async fn handle_new_websocket_connection(
+    ws: WebSocketStream<TcpStream>,
+    db: Arc<fast_storage::BlazinglyFastDb>,
+) {
     // Use a counter to assign a new unique ID for this user.
-    let my_id = NEXT_USER_ID.fetch_add(1, Ordering::Relaxed);
+    let my_id = NEXT_USER_ID.fetch_add(1, Ordering::Relaxed).to_string();
 
     eprintln!("new chat user: {}", my_id);
 
     // Split the socket into a sender and receive of messages.
-    let (mut user_ws_tx, mut user_ws_rx) = ws.split();
+    let (user_ws_tx, mut user_ws_rx) = ws.split();
 
     // Use an unbounded channel to handle buffering and flushing of messages
     // to the websocket...
-    let (tx, rx) = mpsc::unbounded_channel();
-    let mut rx = UnboundedReceiverStream::new(rx);
+    let (webs_sender_channel, webs_receiver_channel) = mpsc::unbounded_channel();
+    // why is a receiver converted to stream?
+    let receiver_stream = UnboundedReceiverStream::new(webs_receiver_channel);
 
-    tokio::task::spawn(async move {
-        while let Some(message) = rx.next().await {
-            user_ws_tx
-                .send(message)
-                .unwrap_or_else(|e| {
-                    eprintln!("websocket send error: {}", e);
-                })
-                .await;
-        }
-    });
+    // Spawn a future to send message to the user, since the sending of messages are async
+    // this strategy is used
+    // tokio::task::spawn(async move {
+    //     while let Some(message) = rx.next().await {
+    //         user_ws_tx
+    //             .send(message)
+    //             .unwrap_or_else(|e| {
+    //                 eprintln!("websocket send error: {}", e);
+    //             })
+    //             .await;
+    //     }
+    // });
+
+    tokio::task::spawn(server_utils::message_handlers::bridge_user_websocket(
+        receiver_stream,
+        user_ws_tx,
+    ));
 
     // Save the sender in our list of connected users.
     let new_user = models::User {
-        id: my_id,
+        id: my_id.to_string(),
         status: models::UserStatus::Available,
         display_name: server_utils::generate_name(),
     };
 
-    let successful_connection_message = models::WebsocketMessage::SuccessfulConnection {
+    let successful_connection_message = models::WSServerMessage::SuccessfulConnection {
         user: new_user.clone(),
     };
 
-    let stringified_message = serde_json::to_string(&successful_connection_message).unwrap();
+    let user_connection_details =
+        server_utils::fast_storage::UserConnection::new(new_user, webs_sender_channel);
 
-    // Tell the user about his connection and user id
-    send_message(stringified_message, &tx).await;
-
-    let user_connection_details = UserConnection {
-        sender: tx.clone(),
-        data: new_user,
-    };
-
-    users.write().await.insert(my_id, user_connection_details);
-
-    let all_users = users
-        .read()
-        .await
-        .iter()
-        .map(|(_user_id, user_data)| user_data.data.clone())
-        .collect::<Vec<_>>();
-
-    broadcast_message(
-        my_id,
-        models::WebsocketMessage::UserStatus {
-            connected_users: all_users,
-        },
-        &users,
-        true,
-    )
-    .await;
+    db.insert_new_user_connection(user_connection_details).await;
+    db.send_message_to_user(&my_id, successful_connection_message)
+        .await;
+    db.boradcast_status().await;
 
     // Handle the messages sent by the user
     while let Some(result) = user_ws_rx.next().await {
@@ -138,36 +116,13 @@ async fn handle_new_websocket_connection(ws: WebSocketStream<TcpStream>, users: 
 
                 match websocket_user_message {
                     Message::Text(text_message) => {
-                        let parsed_message =
-                            serde_json::from_str::<models::WebsocketMessage>(&text_message)
-                                .expect("Unable to parse websocket message");
-
-                        match parsed_message {
-                            models::WebsocketMessage::Progress { .. } => {}
-                            models::WebsocketMessage::Challenge {
-                                challanger_user_id: _from_user_id,
-                                challengee_user_id: to_user_id,
-                                ..
-                            } => {
-                                // Send the message to challenge user
-                                let users_read = users.read().await;
-
-                                let (_user_id, user_connection) = users_read
-                                    .iter()
-                                    .find(|(user_id, _)| user_id.to_string() == to_user_id)
-                                    .unwrap(); // TODO: no user found error
-
-                                user_connection
-                                    .sender
-                                    .send(Message::Text(text_message))
-                                    .unwrap();
-                            }
-                            models::WebsocketMessage::UserStatus { .. } => {}
-                            models::WebsocketMessage::SuccessfulConnection { .. } => {}
-                            models::WebsocketMessage::ChatMessage { .. } => {}
-                        }
+                        server_utils::message_handlers::handle_client_messages(
+                            &text_message,
+                            Arc::clone(&db),
+                            &my_id.to_string(),
+                        )
+                        .await;
                     }
-                    Message::Close(_close_frame) => {}
                     _ => {}
                 }
             }
@@ -180,54 +135,6 @@ async fn handle_new_websocket_connection(ws: WebSocketStream<TcpStream>, users: 
 
     // user_ws_rx stream will keep processing as long as the user stays
     // connected. Once they disconnect, then...
-    user_disconnected(my_id, &users).await;
-
-    let all_users = users
-        .read()
-        .await
-        .iter()
-        .map(|(_user_id, user_data)| user_data.data.clone())
-        .collect::<Vec<_>>();
-
-    broadcast_message(
-        my_id,
-        models::WebsocketMessage::UserStatus {
-            connected_users: all_users,
-        },
-        &users,
-        true,
-    )
-    .await;
-}
-
-/// This function will send the message to all users except the one who sent it
-async fn broadcast_message(
-    my_id: usize,
-    msg: models::WebsocketMessage,
-    users: &UserConnections,
-    send_to_self: bool,
-) {
-    let stringified_message = serde_json::to_string(&msg).unwrap();
-    // New message from this user, send it to everyone else (except same uid)...
-    for (&uid, tx) in users.read().await.iter() {
-        if send_to_self || my_id != uid {
-            send_message(stringified_message.clone(), &tx.sender).await
-        }
-    }
-}
-
-async fn send_message(message: String, tx: &UnboundedSender<Message>) {
-    println!("{message}");
-    if let Err(_disconnected) = tx.send(Message::text(message)) {
-        // The tx is disconnected, our `user_disconnected` code
-        // should be happening in another task, nothing more to
-        // do here.
-    }
-}
-
-async fn user_disconnected(my_id: usize, users: &UserConnections) {
-    eprintln!("good bye user: {}", my_id);
-
-    // Stream closed up, so remove from the user list
-    users.write().await.remove(&my_id);
+    db.delete_user_connection(&my_id.to_string()).await;
+    db.boradcast_status().await;
 }

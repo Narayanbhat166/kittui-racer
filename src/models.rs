@@ -1,29 +1,33 @@
+/// These are the messages that can be sent by server to client.
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(tag = "message_type", content = "message")]
 #[serde(rename_all = "snake_case")]
-pub enum WebsocketMessage {
-    // Progress of the user ( user_id, progress )
-    Progress {
-        user_id: String,
-        progress: u16,
-    },
-    Challenge {
-        // The current player, who is prompting other user for a game
-        challanger_user_id: String,
-        // One to whom a challenge is made
-        challengee_user_id: String,
-        // The name of challenger
-        challenger_name: String,
-    },
+pub enum WSServerMessage {
+    // Progress of the game ( user_id, progress )
     UserStatus {
         connected_users: Vec<User>,
     },
     SuccessfulConnection {
         user: User,
     },
-    ChatMessage {
-        user_id: String,
-        message: String,
+    RequestForChallenge {
+        // Inform the user that a challenge has been raised against him
+        from_user: User,
+    },
+}
+
+/// These are the messages that are sent by client to server
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[serde(tag = "message_type", content = "message")]
+#[serde(rename_all = "snake_case")]
+pub enum WSClientMessage {
+    Challenge {
+        // Raise a challenge to user id
+        to_user_id: String,
+    },
+    AcceptChallenge {
+        // Accept the challenge from opponent_user_id
+        opponent_user_id: String,
     },
 }
 
@@ -35,7 +39,7 @@ pub enum UserStatus {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct User {
-    pub id: usize,
+    pub id: String,
     pub status: UserStatus,
     pub display_name: String,
 }
