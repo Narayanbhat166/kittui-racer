@@ -23,7 +23,10 @@ fn draw_playground<B: Backend>(app: Arc<Mutex<App>>, playground_area: Rect, fram
         Tab::Game => {
             let styles_text = app
                 .state
-                .prompt
+                .game
+                .as_ref()
+                .unwrap()
+                .prompt_text
                 .iter()
                 .map(|prompt_key| {
                     let mut span = Span::from(prompt_key.character.to_string()); //very bad
@@ -141,25 +144,39 @@ fn draw_bottom_bar<B: Backend>(app: Arc<Mutex<App>>, area: Rect, frame: &mut Fra
     frame.render_widget(paragraph_widget, area)
 }
 
-fn draw_progress_bar<B: Backend>(app: Arc<Mutex<App>>, area: Rect, frame: &mut Frame<B>) {
+fn draw_progress_bar<B: Backend>(app: Arc<Mutex<App>>, area: Vec<Rect>, frame: &mut Frame<B>) {
     let app = app.lock().unwrap();
 
     // Draw progress bar only in game mode
     if app.current_tab == Tab::Game {
-        let progress = app.state.cursor_position as f64 / app.state.prompt.len() as f64;
-        let progress = (progress * 100.0) as u16;
+        let game_data = app.state.game.as_ref().unwrap();
 
-        let gauge = Gauge::default()
-            .block(Block::default().borders(Borders::ALL).title("Progress"))
+        let my_progress_gauge = Gauge::default()
+            .block(Block::default().borders(Borders::ALL).title("My Progress"))
             .gauge_style(
                 Style::default()
                     .fg(Color::White)
                     .bg(Color::Black)
                     .add_modifier(Modifier::ITALIC),
             )
-            .percent(progress);
+            .percent(game_data.my_progress);
 
-        frame.render_widget(gauge, area);
+        let opponent_progress_gauge = Gauge::default()
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Opponent Progress"),
+            )
+            .gauge_style(
+                Style::default()
+                    .fg(Color::White)
+                    .bg(Color::Black)
+                    .add_modifier(Modifier::ITALIC),
+            )
+            .percent(game_data.opponent_progress);
+
+        frame.render_widget(my_progress_gauge, area[0]);
+        frame.render_widget(opponent_progress_gauge, area[1]);
     }
 }
 
@@ -175,5 +192,5 @@ pub fn draw_ui_from_layout<B: Backend>(
     draw_bottom_bar(app.clone(), layouts.bottom_bar, frame);
 
     // This will be drawn only in case of game mode
-    draw_progress_bar(app, layouts.progress_bar, frame);
+    draw_progress_bar(app, layouts.progress_bars, frame);
 }

@@ -38,7 +38,7 @@ pub fn divide_frame(main_frame_size: Rect) -> types::Layouts {
 
     types::Layouts {
         playground: middle_chunks[1],
-        progress_bar: progress_bars[0],
+        progress_bars,
         bottom_bar: main_chunks[3],
     }
 }

@@ -1,5 +1,8 @@
 use futures_util::{SinkExt, StreamExt};
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    time::{SystemTime, UNIX_EPOCH},
+};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::{models as server_models, ui::types};
@@ -22,6 +25,7 @@ fn handle_incoming_websocket_message(
                     from_user.display_name
                 ),
                 5,
+                false,
             ));
 
             let challenge_data = types::ChallengeData {
@@ -44,6 +48,7 @@ fn handle_incoming_websocket_message(
             let name_assign_log_event = types::Event::success(
                 &format!("Master Cat assigned name {} to you", user.display_name),
                 1,
+                false,
             );
             unlocked_app.add_log_event(name_assign_log_event);
             // User details of the current user
@@ -52,6 +57,37 @@ fn handle_incoming_websocket_message(
                 status: types::UserStatus::Available,
                 display_name: user.display_name,
             });
+        }
+        server_models::WSServerMessage::Error { message } => {
+            let error_event_log = types::Event::error(&message, 1, false);
+            unlocked_app.add_log_event(error_event_log);
+        }
+        server_models::WSServerMessage::GameInit {
+            game_id,
+            prompt_text,
+            starts_at,
+        } => {
+            let ui_game_data = types::UiGameData::new(game_id, prompt_text, starts_at);
+            unlocked_app.state.game = Some(ui_game_data);
+            unlocked_app.current_tab = types::Tab::Game;
+
+            let current_time = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+
+            let seconds_for_game_to_start = starts_at.saturating_sub(current_time);
+
+            let game_init_log_event = types::Event::success(
+                &format!(
+                    "Challenge accepted, game will begin in {} seconds",
+                    seconds_for_game_to_start.to_string()
+                ),
+                u8::try_from(seconds_for_game_to_start).unwrap(),
+                true,
+            );
+
+            unlocked_app.add_log_event(game_init_log_event);
         }
     }
 }
@@ -73,7 +109,7 @@ pub async fn event_handler(
         Ok((socket, _response)) => {
             {
                 let connection_success_log =
-                    types::Event::success("Websocket connection established", 1);
+                    types::Event::success("Websocket connection established", 1, false);
                 app.clone()
                     .lock()
                     .unwrap()
@@ -124,12 +160,13 @@ pub async fn event_handler(
                                 let event = types::Event::error(
                                     &format!("Could not send challenge because of error {error:?}"),
                                     1,
+                                    true,
                                 );
                                 event
                             })
                             .map(|_| {
                                 let event =
-                                    types::Event::success(&format!("Accepted challenge"), 1);
+                                    types::Event::success(&format!("Accepted challenge"), 1, true);
                                 event
                             });
 
@@ -156,6 +193,7 @@ pub async fn event_handler(
                                 let event = types::Event::error(
                                     &format!("Could not send challenge because of error {error:?}"),
                                     1,
+                                    false,
                                 );
                                 event
                             })
@@ -163,6 +201,7 @@ pub async fn event_handler(
                                 let event = types::Event::success(
                                     &format!("Successfully sent the challenge to {user_name}",),
                                     2,
+                                    false,
                                 );
                                 event
                             });
@@ -186,6 +225,7 @@ pub async fn event_handler(
             let error_log_event = types::Event::error(
                 &format!("Could not create websocket connection {socket_connect_error}"),
                 1,
+                true,
             );
             app.add_log_event(error_log_event);
         }

@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use crate::{models, server_utils::fast_storage};
+use crate::{
+    models,
+    server_utils::fast_storage::{self, GameData, UserGameData},
+};
 use futures_util::{SinkExt, StreamExt};
 use serde_json;
 use tokio_tungstenite::tungstenite::protocol;
@@ -53,21 +56,76 @@ pub async fn handle_client_messages(
                     let message = models::WSServerMessage::RequestForChallenge {
                         from_user: user_details,
                     };
-                    (Some(message), Some(to_user_id))
+                    (Some(message), Some(vec![to_user_id]))
                 }
                 None => {
                     eprintln!("User not found {to_user_id}");
-                    (None, None)
+                    let error_message = models::WSServerMessage::Error {
+                        message: "Requested user cannot be found or is disconnected".to_string(),
+                    };
+                    (Some(error_message), Some(vec![to_user_id]))
                 }
             }
         }
-        models::WSClientMessage::AcceptChallenge {
-            opponent_user_id: _,
-        } => todo!(),
+        models::WSClientMessage::AcceptChallenge { opponent_user_id } => {
+            // Create a game in the database
+            // user1 is the person who created the challenge
+
+            // The user can not be present if he is disconnected, what to do in that case?
+            let current_user_connection = db.get_user_connection_by_id(current_user_id).await;
+            let opponent_user_connection = db.get_user_connection_by_id(&opponent_user_id).await;
+
+            match (current_user_connection, opponent_user_connection) {
+                (Some(user1), Some(user2)) => {
+                    let user_game_data1 = UserGameData::new(&user1);
+                    let user_game_data2 = UserGameData::new(&user2);
+
+                    let game_data = GameData::new(user_game_data1, user_game_data2);
+
+                    db.insert_game(game_data.clone()).await;
+
+                    // Inform the users about the starting of game
+                    let game_init_message = models::WSServerMessage::GameInit {
+                        game_id: game_data.id.clone(),
+                        prompt_text: game_data.prompt_text.clone(),
+                        starts_at: game_data.starts_at.clone(),
+                    };
+
+                    (
+                        Some(game_init_message),
+                        Some(vec![current_user_id.to_string(), opponent_user_id]),
+                    )
+                }
+                (Some(_), None) => {
+                    // The opponent user is disconnected, send the message to current user
+                    eprintln!("User not found {opponent_user_id}");
+                    let error_message = models::WSServerMessage::Error {
+                        message: "Requested user cannot be found or is disconnected".to_string(),
+                    };
+                    (Some(error_message), Some(vec![current_user_id.to_string()]))
+                }
+                (None, Some(_)) => {
+                    // The opponent user is disconnected, send the message to current user
+                    eprintln!("User not found {current_user_id}");
+                    let error_message = models::WSServerMessage::Error {
+                        message: "Requested user cannot be found or is disconnected".to_string(),
+                    };
+                    (Some(error_message), Some(vec![opponent_user_id]))
+                }
+                (None, None) => (None, None),
+            }
+        }
     };
 
     match (message_reply, user_id) {
-        (Some(message), Some(user_id)) => db.send_message_to_user(&user_id, message).await,
+        (Some(message), Some(user_ids)) => {
+            let futures_of_messages = user_ids
+                .iter()
+                .map(|user_id| db.send_message_to_user(user_id, message.clone()))
+                .collect::<Vec<_>>();
+
+            futures_util::future::join_all(futures_of_messages).await;
+        }
         _ => {}
     }
 }

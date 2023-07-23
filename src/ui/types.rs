@@ -12,7 +12,7 @@ use crate::{models, ui::stateful_list::StatefulList};
 
 pub struct Layouts {
     pub playground: Rect,
-    pub progress_bar: Rect,
+    pub progress_bars: Vec<Rect>,
     pub bottom_bar: Rect,
 }
 
@@ -65,24 +65,58 @@ impl Player {
         sender.blocking_send(message).unwrap();
     }
 }
+
+pub struct UiGameData {
+    game_id: String,
+    pub my_progress: u16,
+    pub opponent_progress: u16,
+    pub prompt_text: Vec<PromptKey>,
+    pub starts_at: u64,
+}
+
+impl UiGameData {
+    pub fn new(game_id: String, prompt_text: String, starts_at: u64) -> Self {
+        let mut transformed_quote_str = prompt_text.chars().map(PromptKey::new).collect::<Vec<_>>();
+
+        // Make the first Prompt key underlined to make it appear as cursor
+        transformed_quote_str[0].state = CharState::CursorPosition;
+
+        Self {
+            game_id,
+            my_progress: 0,
+            opponent_progress: 0,
+            prompt_text: transformed_quote_str,
+            starts_at,
+        }
+    }
+}
+
 pub struct State {
-    pub prompt: Vec<PromptKey>,
+    // pub prompt: Vec<PromptKey>,
+
     // Position of the cursor
     pub cursor_position: u16,
+
+    /// List of all the connected players
     pub players: StatefulList<Player>,
+
     pub menu: StatefulList<&'static str>,
+
     /// Whether the user is currently challenged
     pub challenge: Option<ChallengeData>,
+
+    /// Details of the game
+    pub game: Option<UiGameData>,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            prompt: vec![],
             cursor_position: 0,
             players: StatefulList::with_items(vec![]),
             menu: StatefulList::with_items(vec!["Game", "Practice"]),
             challenge: None,
+            game: None,
         }
     }
 }
@@ -128,6 +162,7 @@ impl LogType {
 
 #[derive(Clone)]
 pub struct Event {
+    pub is_priority: bool,
     pub log_type: LogType,
     pub message: String,
     pub duration: time::Duration,
@@ -136,8 +171,9 @@ pub struct Event {
 }
 
 impl Event {
-    pub fn new(log_type: LogType, message: &str, duration: u8) -> Self {
+    pub fn new(log_type: LogType, message: &str, duration: u8, is_priority: bool) -> Self {
         Self {
+            is_priority,
             log_type,
             message: message.to_string(),
             duration: time::Duration::from_secs(u64::from(duration)),
@@ -186,16 +222,16 @@ impl Event {
     }
 
     /// specify the message to be displayed and duration for which message should be displayed
-    pub fn success(message: &str, duration: u8) -> Self {
-        Self::new(LogType::Success, message, duration)
+    pub fn success(message: &str, duration: u8, is_priority: bool) -> Self {
+        Self::new(LogType::Success, message, duration, is_priority)
     }
 
-    pub fn error(message: &str, duration: u8) -> Self {
-        Self::new(LogType::Error, message, duration)
+    pub fn error(message: &str, duration: u8, is_priority: bool) -> Self {
+        Self::new(LogType::Error, message, duration, is_priority)
     }
 
-    pub fn info(message: &str, duration: u8) -> Self {
-        Self::new(LogType::Info, message, duration)
+    pub fn info(message: &str, duration: u8, is_priority: bool) -> Self {
+        Self::new(LogType::Info, message, duration, is_priority)
     }
 }
 
@@ -228,14 +264,6 @@ impl PromptKey {
 
 impl App {
     pub fn new(event_sender: tokio::sync::mpsc::Sender<UiMessage>) -> Self {
-        let mut transformed_quote_str = String::from("Things we do for love")
-            .chars()
-            .map(PromptKey::new)
-            .collect::<Vec<_>>();
-
-        // Make the first Prompt key underlines to make it appear as cursor
-        transformed_quote_str[0].state = CharState::CursorPosition;
-
         Self {
             current_tab: Tab::default(),
             events: VecDeque::new(),
@@ -246,7 +274,11 @@ impl App {
     }
 
     pub fn add_log_event(&mut self, event: Event) {
-        self.events.push_back(event)
+        // If it is a priority event, remove all other events from the queue
+        if event.is_priority {
+            self.events.clear();
+        }
+        self.events.push_back(event);
     }
 
     pub fn accept_current_challenge(&mut self) {
@@ -258,7 +290,7 @@ impl App {
                 .blocking_send(accept_challenge_ui_message)
                 .unwrap();
         } else {
-            let invalid_action_error = Event::error("No active challenges to accept", 1);
+            let invalid_action_error = Event::error("No active challenges to accept", 1, false);
             self.add_log_event(invalid_action_error);
         }
     }

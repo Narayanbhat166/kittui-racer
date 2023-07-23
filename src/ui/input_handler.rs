@@ -14,34 +14,30 @@ use crate::ui::{
 /// Update the state of characters based on this
 pub fn handle_game_input(app: &mut types::App, input: KeyCode) -> bool {
     let position = app.state.cursor_position as usize;
+    let game_data = app.state.game.as_mut().unwrap();
+    let prompt_text = &mut game_data.prompt_text;
+
     match input {
         KeyCode::Char(character) => {
-            if app
-                .state
-                .prompt
-                .get(position)
-                .unwrap()
-                .character
-                .eq(&character)
-            {
-                app.state.prompt.get_mut(position).unwrap().state =
+            if prompt_text.get(position).unwrap().character.eq(&character) {
+                prompt_text.get_mut(position).unwrap().state =
                     CharState::Touched(TouchState::Valid);
             } else {
-                app.state.prompt.get_mut(position).unwrap().state =
+                prompt_text.get_mut(position).unwrap().state =
                     CharState::Touched(TouchState::Invalid);
             }
-            if position + 1 != app.state.prompt.len() {
+            if position + 1 != prompt_text.len() {
                 app.state.cursor_position += 1;
-                app.state.prompt.get_mut(position + 1).unwrap().state = CharState::CursorPosition;
+                prompt_text.get_mut(position + 1).unwrap().state = CharState::CursorPosition;
             }
             false
         }
         KeyCode::Backspace => {
             if app.state.cursor_position > 0 {
                 // Make current character as next character
-                app.state.prompt.get_mut(position).unwrap().state = CharState::Untouched;
+                prompt_text.get_mut(position).unwrap().state = CharState::Untouched;
                 app.state.cursor_position -= 1;
-                app.state.prompt.get_mut(position - 1).unwrap().state = CharState::CursorPosition;
+                prompt_text.get_mut(position - 1).unwrap().state = CharState::CursorPosition;
 
                 false
             } else {
@@ -102,12 +98,20 @@ pub fn handle_arena_input(app: &mut types::App, input: KeyCode) -> bool {
 /// Handle switching between menu options
 /// Returns a bool which indicates whether to quit the app or not
 pub fn handle_menu_input(app: &mut types::App, input: KeyCode) -> bool {
-    let action = match input {
-        KeyCode::Down | KeyCode::Char('j') => TransitionAction::MoveDown,
-        KeyCode::Up | KeyCode::Char('k') => TransitionAction::MoveUp,
-        KeyCode::Right | KeyCode::Enter | KeyCode::Char('l') => TransitionAction::Select,
-        KeyCode::Esc => TransitionAction::Quit,
-        _ => TransitionAction::Nop,
+    let action = if app.state.challenge.is_some() {
+        match input {
+            KeyCode::Char('a') => TransitionAction::AcceptChallenge,
+            // Todo: blink the event bar
+            _ => TransitionAction::Nop,
+        }
+    } else {
+        match input {
+            KeyCode::Down | KeyCode::Char('j') => TransitionAction::MoveDown,
+            KeyCode::Up | KeyCode::Char('k') => TransitionAction::MoveUp,
+            KeyCode::Right | KeyCode::Enter | KeyCode::Char('l') => TransitionAction::Select,
+            KeyCode::Esc => TransitionAction::Quit,
+            _ => TransitionAction::Nop,
+        }
     };
 
     match action {
@@ -133,6 +137,10 @@ pub fn handle_menu_input(app: &mut types::App, input: KeyCode) -> bool {
             })
             .unwrap_or(false),
         TransitionAction::Quit => true,
+        TransitionAction::AcceptChallenge => {
+            app.accept_current_challenge();
+            false
+        }
         _ => false,
     }
 }

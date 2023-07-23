@@ -73,16 +73,6 @@ async fn handle_new_websocket_connection(
 
     // Spawn a future to send message to the user, since the sending of messages are async
     // this strategy is used
-    // tokio::task::spawn(async move {
-    //     while let Some(message) = rx.next().await {
-    //         user_ws_tx
-    //             .send(message)
-    //             .unwrap_or_else(|e| {
-    //                 eprintln!("websocket send error: {}", e);
-    //             })
-    //             .await;
-    //     }
-    // });
 
     tokio::task::spawn(server_utils::message_handlers::bridge_user_websocket(
         receiver_stream,

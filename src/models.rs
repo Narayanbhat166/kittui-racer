@@ -14,6 +14,15 @@ pub enum WSServerMessage {
         // Inform the user that a challenge has been raised against him
         from_user: User,
     },
+    Error {
+        message: String,
+    },
+    GameInit {
+        game_id: String,
+        prompt_text: String,
+        // Unix timestamp
+        starts_at: u64,
+    },
 }
 
 /// These are the messages that are sent by client to server
@@ -44,14 +53,9 @@ pub struct User {
     pub display_name: String,
 }
 
+#[derive(Copy, Clone)]
 pub enum GameStatus {
     Init,
-    Challenge,
-    Progress,
+    InProgress,
     Finished,
-}
-
-pub struct GameData {
-    _users: Vec<User>,
-    _status: GameStatus,
 }
