@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use crossterm::event::KeyCode;
 
 use crate::ui::{
+    self,
     fsm::TransitionAction,
     types::{self, CharState, TouchState},
 };
@@ -30,6 +31,11 @@ pub fn handle_game_input(app: &mut types::App, input: KeyCode) -> bool {
                 app.state.cursor_position += 1;
                 prompt_text.get_mut(position + 1).unwrap().state = CharState::CursorPosition;
             }
+
+            // Update the progress
+            let my_progress = ui::utils::calculate_progress(position, prompt_text.len());
+            game_data.update_current_progress(my_progress, &app.event_sender);
+
             false
         }
         KeyCode::Backspace => {

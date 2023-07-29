@@ -3,8 +3,6 @@ use tokio::sync::{
     RwLock,
 };
 
-use tokio_tungstenite::tungstenite::protocol;
-
 use crate::models::{self, GameStatus, User};
 use std::{
     collections,
@@ -15,22 +13,22 @@ use std::{
 /// Holds a Sender end of the channel to send messages to websocket
 #[derive(Clone)]
 pub struct UserConnection {
-    sender: mpsc::UnboundedSender<protocol::Message>,
+    sender: mpsc::UnboundedSender<models::WSServerMessage>,
     data: models::User,
 }
 
 /// Details of users who are currently in a game
 #[derive(Clone)]
 pub struct UserGameData {
-    progress: f32,
+    progress: u16,
     user_id: String,
-    sender: mpsc::UnboundedSender<protocol::Message>,
+    sender: mpsc::UnboundedSender<models::WSServerMessage>,
 }
 
 impl UserGameData {
     pub fn new(user: &UserConnection) -> Self {
         Self {
-            progress: 0.0,
+            progress: 0,
             user_id: user.data.id.to_owned(),
             sender: user.sender.clone(),
         }
@@ -40,15 +38,14 @@ impl UserGameData {
 #[derive(Clone)]
 pub struct GameData {
     pub id: String,
-    pub user1: UserGameData,
-    pub user2: UserGameData,
+    pub users: Vec<UserGameData>,
     pub status: GameStatus,
     pub prompt_text: String,
     pub starts_at: u64,
 }
 
 impl GameData {
-    pub fn new(user1: UserGameData, user2: UserGameData) -> Self {
+    pub fn new(users: Vec<UserGameData>) -> Self {
         // Generate a prompt text, maybe call an api or store all the quotes in a json file
         let prompt_text = "To wear your heart on your sleeve isn't a very good plan; you should wear it inside, where it functions best.".to_string();
 
@@ -60,12 +57,11 @@ impl GameData {
 
         let starts_at = current_timestamp + 10;
 
-        let game_id = format!("{}{}", user1.user_id, user2.user_id);
+        let game_id = format!("{}{}", users[0].user_id, users[1].user_id);
 
         Self {
             id: game_id,
-            user1,
-            user2,
+            users,
             status: GameStatus::Init,
             prompt_text,
             starts_at,
@@ -74,7 +70,7 @@ impl GameData {
 }
 
 impl UserConnection {
-    pub fn new(user: models::User, sender: mpsc::UnboundedSender<protocol::Message>) -> Self {
+    pub fn new(user: models::User, sender: mpsc::UnboundedSender<models::WSServerMessage>) -> Self {
         Self { sender, data: user }
     }
 }
@@ -110,14 +106,10 @@ impl BlazinglyFastDb {
             connected_users: all_users,
         };
 
-        let stringified_message = serde_json::to_string(&status_message).unwrap();
-        eprintln!("boradcasting status {stringified_message}");
+        eprintln!("boradcasting status {status_message:?}");
 
         read_lock.values().for_each(|user_connection| {
-            user_connection
-                .sender
-                .send(protocol::Message::Text(stringified_message.clone()))
-                .ok();
+            user_connection.sender.send(status_message.clone()).ok();
         });
     }
 
@@ -138,15 +130,10 @@ impl BlazinglyFastDb {
     }
 
     pub async fn send_message_to_user(&self, user_id: &str, message: models::WSServerMessage) {
-        let stringified_message = serde_json::to_string(&message).unwrap();
-
         // handle gracefully, the caller should be notified that message was not sent to user
-        self.users.read().await.get(user_id).map(|user_connection| {
-            user_connection
-                .sender
-                .send(protocol::Message::Text(stringified_message))
-                .unwrap();
-        });
+        if let Some(user_connection) = self.get_user_connection_by_id(user_id).await {
+            user_connection.sender.send(message).unwrap();
+        }
     }
 
     pub async fn delete_user_connection(&self, user_id: &str) {
@@ -156,5 +143,39 @@ impl BlazinglyFastDb {
     pub async fn insert_game(&self, game: GameData) {
         let mut locked_games = self.games.write().await;
         locked_games.insert(game.id.clone(), game);
+    }
+
+    pub async fn update_game_progress(&self, game_id: &str, user_id: &str, progress: u16) {
+        let mut locked_games = self.games.write().await;
+        let current_game = locked_games.get_mut(game_id).unwrap();
+
+        let user_data = current_game
+            .users
+            .iter_mut()
+            .find(|user| user.user_id == user_id)
+            .unwrap();
+
+        user_data.progress = progress;
+    }
+
+    pub async fn broadcase_game_status(&self, game_id: &str) {
+        let locked_games = self.games.read().await;
+        let current_game = locked_games.get(game_id).unwrap();
+
+        let user1 = &current_game.users[0];
+        let user2 = &current_game.users[1];
+
+        let user1_message = models::WSServerMessage::GameUpdate {
+            my_progress: user1.progress,
+            opponent_progress: user2.progress,
+        };
+
+        let user2_message = models::WSServerMessage::GameUpdate {
+            my_progress: user2.progress,
+            opponent_progress: user1.progress,
+        };
+
+        user1.sender.send(user1_message).unwrap();
+        user2.sender.send(user2_message).unwrap();
     }
 }

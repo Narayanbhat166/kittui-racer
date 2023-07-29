@@ -104,16 +104,13 @@ async fn handle_new_websocket_connection(
             Ok(websocket_user_message) => {
                 println!("websocket user message {:?}", websocket_user_message);
 
-                match websocket_user_message {
-                    Message::Text(text_message) => {
-                        server_utils::message_handlers::handle_client_messages(
-                            &text_message,
-                            Arc::clone(&db),
-                            &my_id.to_string(),
-                        )
-                        .await;
-                    }
-                    _ => {}
+                if let Message::Text(text_message) = websocket_user_message {
+                    server_utils::message_handlers::handle_client_messages(
+                        &text_message,
+                        Arc::clone(&db),
+                        &my_id.to_string(),
+                    )
+                    .await;
                 }
             }
             Err(e) => {

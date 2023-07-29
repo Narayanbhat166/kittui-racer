@@ -89,6 +89,20 @@ impl UiGameData {
             starts_at,
         }
     }
+
+    pub fn update_current_progress(
+        &mut self,
+        progress: u16,
+        sender: &tokio::sync::mpsc::Sender<UiMessage>,
+    ) {
+        self.my_progress = progress;
+        let message = UiMessage::UpdateProgress {
+            game_id: self.game_id.to_owned(),
+            progress,
+        };
+
+        sender.blocking_send(message).unwrap();
+    }
 }
 
 pub struct State {
@@ -195,11 +209,7 @@ impl Event {
         let current_time = time::Instant::now();
         let event_expiry_time = self.displayed_at.unwrap_or(self.created_at) + self.duration;
 
-        if current_time > event_expiry_time {
-            true
-        } else {
-            false
-        }
+        current_time > event_expiry_time
     }
 
     /// Returns the modifier with which to display the event
@@ -312,5 +322,9 @@ pub enum UiMessage {
     AcceptChallenge {
         /// Username of the opponent
         user_id: String,
+    },
+    UpdateProgress {
+        game_id: String,
+        progress: u16,
     },
 }

@@ -1,3 +1,4 @@
+/// Handlers are defined to send websocket messages
 use futures_util::{SinkExt, StreamExt};
 use std::{
     sync::{Arc, Mutex},
@@ -81,13 +82,20 @@ fn handle_incoming_websocket_message(
             let game_init_log_event = types::Event::success(
                 &format!(
                     "Challenge accepted, game will begin in {} seconds",
-                    seconds_for_game_to_start.to_string()
+                    seconds_for_game_to_start
                 ),
                 u8::try_from(seconds_for_game_to_start).unwrap(),
                 true,
             );
 
             unlocked_app.add_log_event(game_init_log_event);
+        }
+        server_models::WSServerMessage::GameUpdate {
+            my_progress,
+            opponent_progress,
+        } => {
+            unlocked_app.state.game.as_mut().unwrap().my_progress = my_progress;
+            unlocked_app.state.game.as_mut().unwrap().opponent_progress = opponent_progress;
         }
     }
 }
@@ -141,8 +149,6 @@ pub async fn event_handler(
             // https://ryhl.io/blog/async-what-is-blocking/
 
             while let Some(ui_message) = ui_message_receiver.recv().await {
-                let cloned_app = app.clone();
-                let mut unlocked_app = cloned_app.lock().unwrap();
                 match ui_message {
                     types::UiMessage::AcceptChallenge {
                         user_id: opponent_user_id,
@@ -157,25 +163,20 @@ pub async fn event_handler(
                             .send(Message::Text(websocket_message_string))
                             .await
                             .map_err(|error| {
-                                let event = types::Event::error(
+                                types::Event::error(
                                     &format!("Could not send challenge because of error {error:?}"),
                                     1,
                                     true,
-                                );
-                                event
+                                )
                             })
-                            .map(|_| {
-                                let event =
-                                    types::Event::success(&format!("Accepted challenge"), 1, true);
-                                event
-                            });
+                            .map(|_| types::Event::success("Accepted challenge", 1, true));
 
                         let event = match res {
                             Ok(event) => event,
                             Err(event) => event,
                         };
 
-                        unlocked_app.add_log_event(event);
+                        app.lock().unwrap().add_log_event(event);
                     }
                     types::UiMessage::ProgressUpdate(_progress) => {}
                     types::UiMessage::Challenge { user_name, user_id } => {
@@ -190,20 +191,18 @@ pub async fn event_handler(
                             .send(Message::Text(websocket_message_string))
                             .await
                             .map_err(|error| {
-                                let event = types::Event::error(
+                                types::Event::error(
                                     &format!("Could not send challenge because of error {error:?}"),
                                     1,
                                     false,
-                                );
-                                event
+                                )
                             })
                             .map(|_| {
-                                let event = types::Event::success(
+                                types::Event::success(
                                     &format!("Successfully sent the challenge to {user_name}",),
                                     2,
                                     false,
-                                );
-                                event
+                                )
                             });
 
                         let event = match res {
@@ -211,7 +210,19 @@ pub async fn event_handler(
                             Err(event) => event,
                         };
 
-                        unlocked_app.add_log_event(event);
+                        app.lock().unwrap().add_log_event(event);
+                    }
+                    types::UiMessage::UpdateProgress { game_id, progress } => {
+                        let websocket_message =
+                            server_models::WSClientMessage::UpdateProgress { game_id, progress };
+
+                        let websocket_message_string =
+                            serde_json::to_string(&websocket_message).unwrap();
+
+                        ws_writer
+                            .send(Message::Text(websocket_message_string))
+                            .await
+                            .unwrap();
                     }
                 };
             }

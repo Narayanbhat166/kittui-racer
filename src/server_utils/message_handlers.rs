@@ -20,7 +20,7 @@ use tokio_tungstenite::tungstenite::protocol;
 ///
 pub async fn bridge_user_websocket(
     // receiver_channel: UnboundedReceiverStream<UnboundedReceiver<protocol::Message>>,
-    receiver_stream: impl StreamExt<Item = protocol::Message>,
+    receiver_stream: impl StreamExt<Item = models::WSServerMessage>,
     // mut websocket_sender: SplitSink<WebSocketStream<tokio::net::TcpStream>, protocol::Message>,
     websocket_sender: impl SinkExt<protocol::Message>,
 ) {
@@ -35,8 +35,12 @@ pub async fn bridge_user_websocket(
     //     .await;
 
     while let Some(message) = receiver_stream.next().await {
-        eprintln!("Bridge {message}");
-        websocket_sender.send(message).await.ok();
+        eprintln!("Bridge {message:?}");
+        let stringified_message = serde_json::to_string(&message).unwrap();
+        websocket_sender
+            .send(protocol::Message::Text(stringified_message))
+            .await
+            .ok();
     }
 }
 
@@ -45,13 +49,13 @@ pub async fn handle_client_messages(
     db: Arc<fast_storage::BlazinglyFastDb>,
     current_user_id: &str,
 ) {
-    let parsed_message = serde_json::from_str::<models::WSClientMessage>(&text_message)
+    let parsed_message = serde_json::from_str::<models::WSClientMessage>(text_message)
         .expect("Unable to parse websocket message");
 
-    let (message_reply, user_id) = match parsed_message {
+    let (message_reply, user_ids) = match parsed_message {
         models::WSClientMessage::Challenge { to_user_id } => {
             // Get the user name and send the challenge to `to_user`
-            match db.get_user_by_id(&current_user_id).await {
+            match db.get_user_by_id(current_user_id).await {
                 Some(user_details) => {
                     let message = models::WSServerMessage::RequestForChallenge {
                         from_user: user_details,
@@ -67,6 +71,13 @@ pub async fn handle_client_messages(
                 }
             }
         }
+        models::WSClientMessage::UpdateProgress { game_id, progress } => {
+            db.update_game_progress(&game_id, current_user_id, progress)
+                .await;
+
+            db.broadcase_game_status(&game_id).await;
+            (None, None)
+        }
         models::WSClientMessage::AcceptChallenge { opponent_user_id } => {
             // Create a game in the database
             // user1 is the person who created the challenge
@@ -80,7 +91,7 @@ pub async fn handle_client_messages(
                     let user_game_data1 = UserGameData::new(&user1);
                     let user_game_data2 = UserGameData::new(&user2);
 
-                    let game_data = GameData::new(user_game_data1, user_game_data2);
+                    let game_data = GameData::new(vec![user_game_data1, user_game_data2]);
 
                     db.insert_game(game_data.clone()).await;
 
@@ -88,7 +99,7 @@ pub async fn handle_client_messages(
                     let game_init_message = models::WSServerMessage::GameInit {
                         game_id: game_data.id.clone(),
                         prompt_text: game_data.prompt_text.clone(),
-                        starts_at: game_data.starts_at.clone(),
+                        starts_at: game_data.starts_at,
                     };
 
                     (
@@ -117,15 +128,12 @@ pub async fn handle_client_messages(
         }
     };
 
-    match (message_reply, user_id) {
-        (Some(message), Some(user_ids)) => {
-            let futures_of_messages = user_ids
-                .iter()
-                .map(|user_id| db.send_message_to_user(user_id, message.clone()))
-                .collect::<Vec<_>>();
+    if let Some((message, user_ids)) = message_reply.zip(user_ids) {
+        let futures_of_messages = user_ids
+            .iter()
+            .map(|user_id| db.send_message_to_user(user_id, message.clone()))
+            .collect::<Vec<_>>();
 
-            futures_util::future::join_all(futures_of_messages).await;
-        }
-        _ => {}
+        futures_util::future::join_all(futures_of_messages).await;
     }
 }

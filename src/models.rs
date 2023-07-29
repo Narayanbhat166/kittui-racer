@@ -1,5 +1,5 @@
 /// These are the messages that can be sent by server to client.
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 #[serde(tag = "message_type", content = "message")]
 #[serde(rename_all = "snake_case")]
 pub enum WSServerMessage {
@@ -23,6 +23,10 @@ pub enum WSServerMessage {
         // Unix timestamp
         starts_at: u64,
     },
+    GameUpdate {
+        my_progress: u16,
+        opponent_progress: u16,
+    },
 }
 
 /// These are the messages that are sent by client to server
@@ -38,15 +42,19 @@ pub enum WSClientMessage {
         // Accept the challenge from opponent_user_id
         opponent_user_id: String,
     },
+    UpdateProgress {
+        game_id: String,
+        progress: u16,
+    },
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub enum UserStatus {
     Available,
     Busy,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct User {
     pub id: String,
     pub status: UserStatus,
