@@ -90,6 +90,11 @@ fn handle_incoming_websocket_message(
 
             unlocked_app.add_log_event(game_init_log_event);
         }
+        server_models::WSServerMessage::GameStart => {
+            if let Some(game_data) = unlocked_app.state.game.as_mut() {
+                game_data.status = server_models::GameStatus::InProgress;
+            }
+        }
         server_models::WSServerMessage::GameUpdate {
             my_progress,
             opponent_progress,

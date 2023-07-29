@@ -2,13 +2,16 @@ use std::sync::{Arc, Mutex};
 
 use crossterm::event::KeyCode;
 
-use crate::ui::{
-    self,
-    fsm::TransitionAction,
-    types::{self, CharState, TouchState},
+use crate::{
+    models,
+    ui::{
+        self,
+        fsm::TransitionAction,
+        types::{self, CharState, TouchState},
+    },
 };
 
-/// Handle input if current tab is game tab
+/// Handle input if current tab is game tab and game status is InProgress
 /// Returns a bool which indicates whether to quit the app or not
 ///
 /// Check whether the entered key is same as expected
@@ -18,44 +21,48 @@ pub fn handle_game_input(app: &mut types::App, input: KeyCode) -> bool {
     let game_data = app.state.game.as_mut().unwrap();
     let prompt_text = &mut game_data.prompt_text;
 
-    match input {
-        KeyCode::Char(character) => {
-            if prompt_text.get(position).unwrap().character.eq(&character) {
-                prompt_text.get_mut(position).unwrap().state =
-                    CharState::Touched(TouchState::Valid);
-            } else {
-                prompt_text.get_mut(position).unwrap().state =
-                    CharState::Touched(TouchState::Invalid);
-            }
-            if position + 1 != prompt_text.len() {
-                app.state.cursor_position += 1;
-                prompt_text.get_mut(position + 1).unwrap().state = CharState::CursorPosition;
-            }
+    if game_data.status == models::GameStatus::InProgress {
+        match input {
+            KeyCode::Char(character) => {
+                if prompt_text.get(position).unwrap().character.eq(&character) {
+                    prompt_text.get_mut(position).unwrap().state =
+                        CharState::Touched(TouchState::Valid);
+                } else {
+                    prompt_text.get_mut(position).unwrap().state =
+                        CharState::Touched(TouchState::Invalid);
+                }
+                if position + 1 != prompt_text.len() {
+                    app.state.cursor_position += 1;
+                    prompt_text.get_mut(position + 1).unwrap().state = CharState::CursorPosition;
+                }
 
-            // Update the progress
-            let my_progress = ui::utils::calculate_progress(position, prompt_text.len());
-            game_data.update_current_progress(my_progress, &app.event_sender);
-
-            false
-        }
-        KeyCode::Backspace => {
-            if app.state.cursor_position > 0 {
-                // Make current character as next character
-                prompt_text.get_mut(position).unwrap().state = CharState::Untouched;
-                app.state.cursor_position -= 1;
-                prompt_text.get_mut(position - 1).unwrap().state = CharState::CursorPosition;
+                // Update the progress
+                let my_progress = ui::utils::calculate_progress(position, prompt_text.len());
+                game_data.update_current_progress(my_progress, &app.event_sender);
 
                 false
-            } else {
-                true
             }
+            KeyCode::Backspace => {
+                if app.state.cursor_position > 0 {
+                    // Make current character as next character
+                    prompt_text.get_mut(position).unwrap().state = CharState::Untouched;
+                    app.state.cursor_position -= 1;
+                    prompt_text.get_mut(position - 1).unwrap().state = CharState::CursorPosition;
+
+                    false
+                } else {
+                    true
+                }
+            }
+            KeyCode::Esc => true,
+            _ => false,
         }
-        KeyCode::Esc => true,
-        _ => false,
+    } else {
+        false
     }
 }
 
-/// Handle challenging of players, and switching selection using arrow keys
+/// This is a place where users can challenge other players
 /// Returns a bool which indicates whether to quit the app or not
 pub fn handle_arena_input(app: &mut types::App, input: KeyCode) -> bool {
     let action = if app.state.challenge.is_some() {

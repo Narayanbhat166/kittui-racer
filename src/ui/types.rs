@@ -8,7 +8,10 @@ use tui::{
 
 pub use models::UserStatus;
 
-use crate::{models, ui::stateful_list::StatefulList};
+use crate::{
+    models::{self, GameStatus},
+    ui::stateful_list::StatefulList,
+};
 
 pub struct Layouts {
     pub playground: Rect,
@@ -68,6 +71,7 @@ impl Player {
 
 pub struct UiGameData {
     game_id: String,
+    pub status: GameStatus,
     pub my_progress: u16,
     pub opponent_progress: u16,
     pub prompt_text: Vec<PromptKey>,
@@ -75,6 +79,7 @@ pub struct UiGameData {
 }
 
 impl UiGameData {
+    /// Create a new game data with the status as Init
     pub fn new(game_id: String, prompt_text: String, starts_at: u64) -> Self {
         let mut transformed_quote_str = prompt_text.chars().map(PromptKey::new).collect::<Vec<_>>();
 
@@ -87,6 +92,7 @@ impl UiGameData {
             opponent_progress: 0,
             prompt_text: transformed_quote_str,
             starts_at,
+            status: GameStatus::Init,
         }
     }
 

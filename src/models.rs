@@ -23,6 +23,7 @@ pub enum WSServerMessage {
         // Unix timestamp
         starts_at: u64,
     },
+    GameStart,
     GameUpdate {
         my_progress: u16,
         opponent_progress: u16,
@@ -61,7 +62,7 @@ pub struct User {
     pub display_name: String,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum GameStatus {
     Init,
     InProgress,

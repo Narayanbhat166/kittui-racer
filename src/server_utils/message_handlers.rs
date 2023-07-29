@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use crate::{
     models,
-    server_utils::fast_storage::{self, GameData, UserGameData},
+    server_utils::{
+        self,
+        fast_storage::{self, GameData, UserGameData},
+    },
 };
 use futures_util::{SinkExt, StreamExt};
 use serde_json;
@@ -101,6 +104,32 @@ pub async fn handle_client_messages(
                         prompt_text: game_data.prompt_text.clone(),
                         starts_at: game_data.starts_at,
                     };
+
+                    // Schedule a tokio task to inform the users about the starting of game
+                    let game_start_message = models::WSServerMessage::GameStart;
+                    let db_clone = db.clone();
+
+                    let cloned_current_user_id = current_user_id.to_string();
+                    let cloned_opponent_user_id = opponent_user_id.clone();
+
+                    let timeout_func = || async move {
+                        db_clone
+                            .send_message_to_user(
+                                &cloned_current_user_id,
+                                game_start_message.clone(),
+                            )
+                            .await;
+                        db_clone
+                            .send_message_to_user(
+                                &&cloned_opponent_user_id.clone(),
+                                game_start_message,
+                            )
+                            .await;
+                    };
+
+                    tokio::spawn(async {
+                        server_utils::set_timeout(10, timeout_func).await;
+                    });
 
                     (
                         Some(game_init_message),
