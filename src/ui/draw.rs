@@ -102,9 +102,12 @@ fn get_event_and_modifier(
             .unwrap_or(Modifier::empty());
         (event.cloned(), modifier)
     } else {
+        // If there are multiple events, and if the top event is expired, then
+        // evict the expired event, and place new event in the event bar
         let old_event = events_vector
             .front_mut()
             .map(|event| event.check_and_update_display_time());
+
         let recent_event = if let Some(event) = old_event {
             if event.is_expired() {
                 events_vector.pop_front();

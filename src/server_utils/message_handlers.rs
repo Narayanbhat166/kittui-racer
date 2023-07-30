@@ -121,7 +121,7 @@ pub async fn handle_client_messages(
                             .await;
                         db_clone
                             .send_message_to_user(
-                                &&cloned_opponent_user_id.clone(),
+                                &cloned_opponent_user_id.clone(),
                                 game_start_message,
                             )
                             .await;

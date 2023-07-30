@@ -9,14 +9,29 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use crate::{models as server_models, ui::types};
 const WS_URL: &str = "ws://localhost:8080";
 
+fn count_down_to_zero(app: Arc<Mutex<types::App>>, event: &str, action: &str, duration: u8) {
+    let first_event = types::Event::countdown(event, action, duration, true);
+    {
+        let mut unlocked_app = app.lock().unwrap();
+        unlocked_app.add_log_event(first_event);
+    }
+
+    (1..duration)
+        .rev()
+        .map(|duration| types::Event::countdown(event, action, duration, false))
+        .for_each(|event| {
+            let mut unlocked_app = app.lock().unwrap();
+            unlocked_app.add_log_event(event);
+        });
+}
+
 fn handle_incoming_websocket_message(
     app: Arc<Mutex<types::App>>,
     websock_message: server_models::WSServerMessage,
 ) {
-    let mut unlocked_app = app.lock().unwrap();
-
     match websock_message {
         server_models::WSServerMessage::RequestForChallenge { from_user } => {
+            let mut unlocked_app = app.lock().unwrap();
             // Show a prompt for the user to accept / reject the challenge
             // This should last only for few seconds, based on the expiry time
             // TODO: add expiry time
@@ -35,6 +50,7 @@ fn handle_incoming_websocket_message(
             unlocked_app.state.challenge = Some(challenge_data);
         }
         server_models::WSServerMessage::UserStatus { connected_users } => {
+            let mut unlocked_app = app.lock().unwrap();
             // filter out current user
             let users_without_current_user = connected_users
                 .into_iter()
@@ -46,6 +62,7 @@ fn handle_incoming_websocket_message(
                 .clear_and_insert_items(users_without_current_user)
         }
         server_models::WSServerMessage::SuccessfulConnection { user } => {
+            let mut unlocked_app = app.lock().unwrap();
             let name_assign_log_event = types::Event::success(
                 &format!("Master Cat assigned name {} to you", user.display_name),
                 1,
@@ -60,6 +77,7 @@ fn handle_incoming_websocket_message(
             });
         }
         server_models::WSServerMessage::Error { message } => {
+            let mut unlocked_app = app.lock().unwrap();
             let error_event_log = types::Event::error(&message, 1, false);
             unlocked_app.add_log_event(error_event_log);
         }
@@ -68,37 +86,43 @@ fn handle_incoming_websocket_message(
             prompt_text,
             starts_at,
         } => {
-            let ui_game_data = types::UiGameData::new(game_id, prompt_text, starts_at);
-            unlocked_app.state.game = Some(ui_game_data);
-            unlocked_app.current_tab = types::Tab::Game;
+            let seconds_for_game_start = {
+                let mut unlocked_app = app.lock().unwrap();
+                let ui_game_data = types::UiGameData::new(game_id, prompt_text, starts_at);
+                unlocked_app.state.game = Some(ui_game_data);
+                unlocked_app.current_tab = types::Tab::Game;
 
-            let current_time = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs();
+                let current_time = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
 
-            let seconds_for_game_to_start = starts_at.saturating_sub(current_time);
+                let seconds_for_game_to_start = starts_at.saturating_sub(current_time);
+                seconds_for_game_to_start
+            };
 
-            let game_init_log_event = types::Event::success(
-                &format!(
-                    "Challenge accepted, game will begin in {} seconds",
-                    seconds_for_game_to_start
-                ),
-                u8::try_from(seconds_for_game_to_start).unwrap(),
-                true,
+            let cloned_app = app.clone();
+
+            count_down_to_zero(
+                cloned_app,
+                "game",
+                "start",
+                u8::try_from(seconds_for_game_start).unwrap(),
             );
-
-            unlocked_app.add_log_event(game_init_log_event);
         }
         server_models::WSServerMessage::GameStart => {
+            let mut unlocked_app = app.lock().unwrap();
+
             if let Some(game_data) = unlocked_app.state.game.as_mut() {
                 game_data.status = server_models::GameStatus::InProgress;
             }
+            unlocked_app.add_log_event(types::Event::success("Game Started", 10, true));
         }
         server_models::WSServerMessage::GameUpdate {
             my_progress,
             opponent_progress,
         } => {
+            let mut unlocked_app = app.lock().unwrap();
             unlocked_app.state.game.as_mut().unwrap().my_progress = my_progress;
             unlocked_app.state.game.as_mut().unwrap().opponent_progress = opponent_progress;
         }

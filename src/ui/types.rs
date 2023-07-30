@@ -168,6 +168,7 @@ pub enum LogType {
     Success,
     Error,
     Info,
+    CountDown,
 }
 
 impl LogType {
@@ -176,6 +177,7 @@ impl LogType {
             LogType::Success => Color::Green,
             LogType::Error => Color::Red,
             LogType::Info => Color::Gray,
+            LogType::CountDown => Color::Yellow,
         }
     }
 }
@@ -203,6 +205,7 @@ impl Event {
     }
 
     /// Update the displayed at time if not previously set
+    /// Displayed at time is used to measure the age of an event
     pub fn check_and_update_display_time(&mut self) -> &mut Self {
         if self.displayed_at.is_none() {
             self.displayed_at = Some(time::Instant::now());
@@ -248,6 +251,19 @@ impl Event {
 
     pub fn info(message: &str, duration: u8, is_priority: bool) -> Self {
         Self::new(LogType::Info, message, duration, is_priority)
+    }
+
+    /// This message updates itself every second for `duration` seconds
+    /// countdown messages are always a priority
+    ///
+    /// `event` is the event that will commence after `duration` seconds
+    ///
+    /// `action` is what happens to event after `duration` seconds
+    ///
+    /// `duration` is the countdown time
+    pub fn countdown(event: &str, action: &str, duration: u8, is_priority: bool) -> Self {
+        let message = &format!("{event} will {action} in {duration} seconds");
+        Self::new(LogType::CountDown, message, 1, is_priority)
     }
 }
 
