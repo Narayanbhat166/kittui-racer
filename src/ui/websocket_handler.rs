@@ -97,8 +97,7 @@ fn handle_incoming_websocket_message(
                     .unwrap()
                     .as_secs();
 
-                let seconds_for_game_to_start = starts_at.saturating_sub(current_time);
-                seconds_for_game_to_start
+                starts_at.saturating_sub(current_time)
             };
 
             let cloned_app = app.clone();
