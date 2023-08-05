@@ -6,7 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-recursion = "1.0.4"
 async-trait           = "0.1.68"
 crossterm             = "0.26.1"
 futures-channel       = "0.3.28"
@@ -18,7 +17,7 @@ serde_json            = "1.0.96"
 time = { version = "0.3.23", features = ["serde"] }
 tokio                 = { version = "1.27.0", features = [ "rt", "rt-multi-thread", "macros" ] }
 tokio-stream          = "0.1.12"
-tokio-tungstenite     = "0.18.0"
+tokio-tungstenite     = { version = "0.18.0",features = ["native-tls"]}
 tui                   = "0.19.0"
 unicode-width         = "0.1.10"
 url                   = "2.3.1"

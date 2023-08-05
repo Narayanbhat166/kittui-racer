@@ -25,12 +25,12 @@ use tokio_tungstenite::{tungstenite::protocol::Message, WebSocketStream};
 async fn main() {
     pretty_env_logger::init();
 
-    // Keep track of all connected users, key is usize, value
-    // is a websocket sender.
+    // Keep track of all connected users, key is usize,
+    // value is a websocket sender.
     let database = Arc::new(fast_storage::BlazinglyFastDb::default());
     let addr = env::args()
         .nth(1)
-        .unwrap_or_else(|| "127.0.0.1:8080".to_string());
+        .unwrap_or_else(|| "0.0.0.0:8080".to_string());
 
     // Create the event loop and TCP listener we'll accept connections on.
     let try_socket = TcpListener::bind(&addr).await;
