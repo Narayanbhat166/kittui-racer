@@ -158,6 +158,19 @@ impl BlazinglyFastDb {
         user_data.progress = progress;
     }
 
+    pub async fn find_game_progress(&self, game_id: &str, user_id: &str) -> u16 {
+        let mut locked_games = self.games.write().await;
+        let current_game = locked_games.get_mut(game_id).unwrap();
+
+        let user_data = current_game
+            .users
+            .iter_mut()
+            .find(|user| user.user_id == user_id)
+            .unwrap();
+
+        user_data.progress
+    }
+
     pub async fn broadcase_game_status(&self, game_id: &str) {
         let locked_games = self.games.read().await;
         let current_game = locked_games.get(game_id).unwrap();
