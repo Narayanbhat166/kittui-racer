@@ -54,7 +54,7 @@ pub async fn handle_client_messages(
 ) {
     let parsed_message = serde_json::from_str::<models::WSClientMessage>(text_message)
         .expect("Unable to parse websocket message");
-    println!("{:?}", parsed_message);
+    
     let (message_reply, user_ids) = match parsed_message {
         models::WSClientMessage::Challenge { to_user_id } => {
             // Get the user name and send the challenge to `to_user`
@@ -76,7 +76,7 @@ pub async fn handle_client_messages(
         }
         models::WSClientMessage::UpdateProgress { game_id, progress } => {
             let current_progress = db.find_game_progress(&game_id, current_user_id).await;
-            eprintln!("Skipping update progress of game_id: {game_id}, current_user_id: {current_user_id}, progress: {progress}, :: {current_progress}");
+            
             if progress < 70 && progress - current_progress < 5 {
                 eprintln!("Skipping update progress of game_id: {game_id}, current_user_id: {current_user_id}, progress: {progress}");
             } else {
