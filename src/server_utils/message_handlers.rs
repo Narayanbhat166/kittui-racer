@@ -76,13 +76,11 @@ pub async fn handle_client_messages(
         }
         models::WSClientMessage::UpdateProgress { game_id, progress } => {
             let current_progress = db.find_game_progress(&game_id, current_user_id).await;
-            
+             db.update_game_progress(&game_id, current_user_id, progress)
+                    .await;
             if progress < 70 && progress - current_progress < 5 {
                 eprintln!("Skipping update progress of game_id: {game_id}, current_user_id: {current_user_id}, progress: {progress}");
             } else {
-                db.update_game_progress(&game_id, current_user_id, progress)
-                    .await;
-
                 db.broadcase_game_status(&game_id).await;
             }
 
