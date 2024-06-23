@@ -31,7 +31,7 @@ pub enum WSServerMessage {
 }
 
 /// These are the messages that are sent by client to server
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 #[serde(tag = "message_type", content = "message")]
 #[serde(rename_all = "snake_case")]
 pub enum WSClientMessage {

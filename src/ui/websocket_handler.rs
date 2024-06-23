@@ -7,7 +7,7 @@ use std::{
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::{models as server_models, ui::types};
-const WS_URL: &str = "wss://broken-glade-6034.fly.dev";
+const WS_URL: &str = "ws://127.0.0.1:8080";
 
 fn count_down_to_zero(app: Arc<Mutex<types::App>>, event: &str, action: &str, duration: u8) {
     let first_event = types::Event::countdown(event, action, duration, true);
